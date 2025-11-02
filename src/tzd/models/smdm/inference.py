@@ -4,8 +4,8 @@ import torch.nn.functional as F
 from transformers import AutoTokenizer
 from safetensors.torch import load_file
 
-from plm.models.smdm.diffmodel import TransEncoder
-from plm.models.smdm.config import Config
+from tzd.models.smdm.diffmodel import TransEncoder
+from tzd.models.smdm.config import Config
 
 # source: SMDM
 def add_gumbel_noise(logits, temperature):

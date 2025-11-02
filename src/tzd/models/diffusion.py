@@ -8,11 +8,8 @@ import torch
 import torch.nn.functional as F
 import wandb
 from tzd.models.base import BaseModel
-from tzd.models.smdm.diffmodel import TransEncoder
-from tzd.models.smdm.config import Config
 from tzd.utils.generation import log_generations
 from tzd.models.llada.inference import generate as llada_sample
-from tzd.models.smdm.inference import diff_sample as smdm_sample
 
 from litgpt.model import GPT
 from litgpt.config import Config as LitGPTConfig
@@ -66,6 +63,9 @@ class DiffusionModel(BaseModel):
         # Initialize model based on model_type
         if model_type == "smdm":
             # Original SMDM path
+            from tzd.models.smdm.diffmodel import TransEncoder
+            from tzd.models.smdm.config import Config
+
             config = Config(
                 vocab_size=self.vocab_size,
                 padded_vocab_size=self.vocab_size, # otherwise default padding multiple 512 takes over
@@ -189,6 +189,8 @@ class DiffusionModel(BaseModel):
         device = next(self.parameters()).device
 
         if repo == "SMDM":
+            from tzd.models.smdm.inference import diff_sample as smdm_sample
+            
             output_tokens = smdm_sample(
                 model=self.model,
                 tokenizer=None,
