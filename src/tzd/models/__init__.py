@@ -1,4 +1,5 @@
 """Models module for tzd."""
-from tzd.models.lit_model import LitModel
+from tzd.models.base import BaseModel
+from tzd.models.diffusion import DiffusionModel
 
-__all__ = ["LitModel"]
+__all__ = ["BaseModel", "DiffusionModel"]
