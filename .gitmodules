@@ -1,0 +1,3 @@
+[submodule "litgpt_diffusion"]
+	path = litgpt_diffusion
+	url = https://github.com/ramithuh/litgpt_diffusion.git
