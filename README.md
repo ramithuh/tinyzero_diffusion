@@ -10,6 +10,15 @@ A minimal diffusion language model framework built with Hydra + PyTorch Lightnin
 - **PyTorch Lightning**: Clean training loop with distributed training support
 - **WandB Integration**: Automatic logging of metrics and generated samples
 
+## Conda env set up & torch installation
+```
+conda create -n dlm python=3.11
+
+# install torch 2.9 with proper cuda that you need
+pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+```
+
+
 ## Installation
 
 ```bash

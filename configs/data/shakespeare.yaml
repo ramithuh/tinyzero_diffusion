@@ -1,0 +1,11 @@
+# @package _global_
+data:
+  _target_: tzd.data.datamodule.TinyShakespeareDataModule
+  data_dir: "data/shakespeare"
+  batch_size: 64
+  block_size: 128
+  num_workers: 4
+  tokenizer: ~
+
+training:
+  log_every_n_steps: 1

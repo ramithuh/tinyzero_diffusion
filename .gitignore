@@ -8,7 +8,6 @@ multirun/
 .hydra/
 
 # Data
-data/
 *.csv
 *.h5
 *.hdf5
