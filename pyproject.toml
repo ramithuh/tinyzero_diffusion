@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tzd"
+version = "0.0.1"
+authors = [
+  { name="Jules", email="jules@example.com" },
+]
+description = "A minimal Hydra + PyTorch Lightning project."
+requires-python = ">=3.11"
+dependencies = [
+    "hydra-core",
+    "pytorch-lightning",
+    "torch",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

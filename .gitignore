@@ -1,0 +1,39 @@
+# PyTorch Lightning
+lightning_logs/
+logs/
+
+# Hydra
+outputs/
+multirun/
+.hydra/
+
+# Data
+data/
+*.csv
+*.h5
+*.hdf5
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.Python
+env/
+venv/
+.env
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints

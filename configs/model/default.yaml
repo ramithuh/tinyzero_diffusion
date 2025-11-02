@@ -1,0 +1,3 @@
+_target_: tzd.models.LitModel
+input_size: 10
+output_size: 1
