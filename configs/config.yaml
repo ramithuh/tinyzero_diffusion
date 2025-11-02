@@ -1,7 +1,34 @@
 # @package _global_
 
 defaults:
-  - model: default
-  - data: default
-  - trainer: default
+  - model: diffusion
+  - tokenizer: llama
+  - training: default
+  - data: shakespeare
   - _self_
+
+# Override defaults here
+seed: 42
+
+data:
+  block_size: ${model.block_size}
+  batch_size: 64
+  num_workers: 4
+  tokenizer: ${tokenizer}
+
+model:
+  tokenizer: ${tokenizer}
+  lr: 0.0005
+
+training:
+  save_dir: ${hydra:runtime.output_dir}/checkpoints
+  epochs: 200
+  gradient_accumulation_steps: 3
+  val_generation_freq: 5
+
+# WandB logger
+logger:
+ _target_: lightning.pytorch.loggers.WandbLogger
+ entity: tiny-zero-diffusion
+ project: diffusion_lm
+ name: ${oc.select:experiment_suffix,null}

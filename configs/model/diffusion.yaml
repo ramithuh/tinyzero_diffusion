@@ -1,0 +1,29 @@
+# @package _global_
+model:
+  _target_: tzd.models.diffusion.DiffusionModel
+  model_alias: tzd_diffusion
+
+  lr: 3e-4
+  tokenizer: ~
+
+  # Model parameters
+  n_layer: 12
+  n_head: 8
+  n_embd: 512
+  block_size: 256
+  bias: True
+
+  norm_class_name: LayerNorm
+  mlp_class_name: GptNeoxMLP
+  intermediate_size: ${oc.eval:"4 * ${model.n_embd}"}
+  rotary_percentage: 1.0
+
+  # Model backend: 'smdm' (original) or 'litgpt' (new)
+  model_type: litgpt
+
+  # Generation parameters
+  val_generation_freq: ${training.val_generation_freq}
+  val_temperatures: [0.5, 1.0]
+  generation_block_size: ${model.block_size}
+  generation_num_steps: 256
+  sampling_repo: LLaDA  # Use LLaDA or SMDM for sampling

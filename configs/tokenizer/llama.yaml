@@ -1,0 +1,4 @@
+# @package _global_
+tokenizer:
+  _target_: transformers.AutoTokenizer.from_pretrained
+  pretrained_model_name_or_path: "huggyllama/llama-30b"

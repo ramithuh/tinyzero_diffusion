@@ -1,0 +1,17 @@
+# @package _global_
+experiment_suffix: default  # Training config identifier
+
+## this is for single-node training (no DDP);
+#  use max gpus you see (devices: auto)
+
+training:
+  accelerator: auto
+  num_nodes: 1
+  devices: auto  # Number of GPUs per node
+
+  # other configs
+  epochs: 10
+  val_check_interval: 1.0  # Validate every epoch
+  log_every_n_steps: 25
+  val_generation_freq: 5  # Generate validation samples every N epochs
+  precision: 32
