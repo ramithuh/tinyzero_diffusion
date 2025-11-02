@@ -1,10 +1,10 @@
-# TZD - Tiny Zero Diffusion
+# TZD - Tiny Zero Diffusion [WIP]
 
-A minimal diffusion language model framework built with Hydra + PyTorch Lightning. This repo provides a clean implementation of discrete diffusion models for text generation, extracted from a larger protein language modeling codebase.
+A minimal diffusion language model framework built with Hydra + PyTorch Lightning. This repo provides a clean implementation of discrete diffusion models for text generation.
 
 ## Features
 
-- **Discrete Diffusion Models**: Implements SMDM (Simple Masked Diffusion Model) and LitGPT-based diffusion
+- **Discrete Diffusion Models**: Uses SMDM (Simple Masked Diffusion Model) and LitGPT-based diffusion (https://github.com/ramithuh/litgpt_diffusion/tree/diffusion)
 - **Flexible Backends**: Switch between SMDM and LitGPT model architectures
 - **Hydra Configuration**: Easy experiment management with composable configs
 - **PyTorch Lightning**: Clean training loop with distributed training support
@@ -93,5 +93,3 @@ model:
 ```
 
 ## Citation
-
-This codebase extracts and adapts diffusion components from a larger protein language modeling project.
