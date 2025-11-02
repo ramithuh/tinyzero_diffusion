@@ -156,20 +156,25 @@ class DiffusionModel(BaseModel):
 
     def on_validation_epoch_end(self):
         """Generate samples and log to wandb at end of validation epoch."""
-        if self.val_generation_freq and self.trainer.current_epoch % self.val_generation_freq == 0:
-            log_generations(
-                trainer=self.trainer,
-                model=self,
-                datamodule=self.trainer.datamodule,
-                epoch=self.trainer.current_epoch,
-                step=self.trainer.global_step,
-                temperatures=self.val_temperatures,
-                num_samples=3,
-                seq_len=self.generation_block_size,
-                num_steps=self.generation_num_steps,
-                wandb_table=self.validation_samples_table,
-                stage="validation"
-            )
+        # Only generate after training has started (skip epoch 0)
+        if self.val_generation_freq and self.trainer.current_epoch > 0 and self.trainer.current_epoch % self.val_generation_freq == 0:
+            try:
+                log_generations(
+                    trainer=self.trainer,
+                    model=self,
+                    datamodule=self.trainer.datamodule,
+                    epoch=self.trainer.current_epoch,
+                    step=self.trainer.global_step,
+                    temperatures=self.val_temperatures,
+                    num_samples=3,
+                    seq_len=self.generation_block_size,
+                    num_steps=self.generation_num_steps,
+                    wandb_table=self.validation_samples_table,
+                    stage="validation"
+                )
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
 
     def sample(self, batch_size=1, seq_len=None, num_steps=None, temperature=1.0, repo="SMDM"):
         """Call inference functions borrowed from SMDM's & LLaDA's inference.py
@@ -200,20 +205,25 @@ class DiffusionModel(BaseModel):
             )
         elif repo == "LLaDA":
             # TODO: we currently focus only on unconditional generation
+            # LLaDA's generate() only supports batch_size=1, so we loop
             empty_prompt = torch.empty((1, 0), dtype=torch.long).to(device)
 
-            output_tokens = llada_sample(
-                model=self.model,
-                prompt=empty_prompt,
-                steps=num_steps or self.generation_num_steps,
-                gen_length=seq_len or self.generation_block_size,
-                block_length=seq_len or self.generation_block_size, # TODO: we do sampling without using semi-autoregressive decoding
-                temperature=temperature,
-                cfg_scale=0.0,
-                remasking='low_confidence',
-                mask_id=self.mask_token_id,
-                device=device
-            )
+            samples = []
+            for _ in range(batch_size):
+                sample = llada_sample(
+                    model=self.model,
+                    prompt=empty_prompt,
+                    steps=num_steps or self.generation_num_steps,
+                    gen_length=seq_len or self.generation_block_size,
+                    block_length=seq_len or self.generation_block_size, # TODO: we do sampling without using semi-autoregressive decoding
+                    temperature=temperature,
+                    cfg_scale=0.0,
+                    remasking='low_confidence',
+                    mask_id=self.mask_token_id,
+                    device=device
+                )
+                samples.append(sample)
+            output_tokens = torch.cat(samples, dim=0)  # Stack to (batch_size, seq_len)
         else:
             raise ValueError(f"Unknown repo: {repo}. Supported repos are 'SMDM' and 'LLaDA'")
 
