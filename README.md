@@ -1,76 +1,97 @@
-# tzd: Minimal Hydra + PyTorch Lightning Project
+# TZD - Tiny Zero Diffusion
 
-This repository is a minimal, well-structured project demonstrating the integration of Hydra and PyTorch Lightning. It follows modern Python packaging best practices using a `src` layout.
+A minimal diffusion language model framework built with Hydra + PyTorch Lightning. This repo provides a clean implementation of discrete diffusion models for text generation, extracted from a larger protein language modeling codebase.
+
+## Features
+
+- **Discrete Diffusion Models**: Implements SMDM (Simple Masked Diffusion Model) and LitGPT-based diffusion
+- **Flexible Backends**: Switch between SMDM and LitGPT model architectures
+- **Hydra Configuration**: Easy experiment management with composable configs
+- **PyTorch Lightning**: Clean training loop with distributed training support
+- **WandB Integration**: Automatic logging of metrics and generated samples
+
+## Installation
+
+```bash
+# Clone the repo with submodules
+git clone --recurse-submodules https://github.com/ramithuh/tinyzero_diffusion.git
+cd tinyzero_diffusion
+
+# Install litgpt_diffusion submodule (custom fork with diffusion modifications)
+pip install -e litgpt_diffusion/
+
+# Install main package
+pip install -e .
+```
+
+**Note:** The `litgpt_diffusion` submodule is automatically checked out to the `diffusion` branch, which includes custom modifications for bidirectional attention (`causal=False`) and fused RoPE optimization.
+
+## Quick Start
+
+Train a diffusion model on TinyShakespeare:
+
+```bash
+# Run training
+python train.py
+
+# Or use the training script
+bash train_diffusion.sh
+```
 
 ## Project Structure
 
 ```
-.
-├── .gitignore
-├── README.md
-├── configs
-│   └── config.yaml
-├── notebooks
-│   └── exploration.ipynb
-├── pyproject.toml
-├── scripts
-│   └── train.py
-├── src
-│   └── tzd
-│       ├── __init__.py
-│       └── models.py
-└── tests
-    └── test_models.py
+tinyzero_diffusion/
+├── src/tzd/                    # Main package
+│   ├── models/                 # Model implementations
+│   │   ├── diffusion.py        # Main diffusion model
+│   │   ├── smdm/               # SMDM backend
+│   │   ├── llada/              # LLaDA inference
+│   │   └── litgpt_diffusion/   # LitGPT backend
+│   ├── data/                   # Data modules
+│   │   └── datamodule.py       # TinyShakespeare datamodule
+│   └── utils/                  # Utilities
+│       └── generation.py       # Sampling and logging
+├── configs/                    # Hydra configs
+│   ├── model/                  # Model configs
+│   ├── data/                   # Data configs
+│   ├── training/               # Training configs
+│   └── tokenizer/              # Tokenizer configs
+├── train.py                    # Main training script
+└── pyproject.toml              # Package dependencies
 ```
 
-## Setup
+## Configuration
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository-url>
-    cd tzd
-    ```
+The project uses Hydra for configuration management. Main config groups:
 
-2.  **Create a conda environment with Python 3.11:**
-    ```bash
-    conda create -n tzd python=3.11
-    conda activate tzd
-    ```
+- `configs/model/diffusion.yaml` - Model architecture (layers, heads, embedding size)
+- `configs/data/shakespeare.yaml` - Dataset configuration
+- `configs/training/default.yaml` - Training hyperparameters
+- `configs/tokenizer/llama.yaml` - Tokenizer settings
 
-3.  **Install Requirements:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-4.  **Install the project in editable mode:**
-    This command will install the project and its dependencies listed in `pyproject.toml`. The `-e` flag allows you to make changes to the source code and have them immediately reflected without reinstalling.
-    ```bash
-    pip install -e .
-    ```
-
-## Usage
-
-### Running the Training Script
-
-To run the training script, use the following command from the project root:
-
+Override configs via command line:
 ```bash
-python scripts/train.py
+python train.py model.n_layer=6 model.n_embd=256 training.epochs=50
 ```
 
-### Overriding Configuration
+## Model Backends
 
-Hydra allows you to easily override any configuration parameter from the command line.
+### SMDM (Simple Masked Diffusion Model)
+- Non-causal Transformer encoder
+- Discrete diffusion with masking
 
-For example, to change the number of training epochs or the batch size:
+### LitGPT
+- GPT architecture with `causal=False`
+- More flexible MLP options (GptNeoxMLP, LLaMAMLP, etc.)
+- Rotary positional embeddings
 
-```bash
-python scripts/train.py trainer.max_epochs=20 data.batch_size=64
+Switch backends in config:
+```yaml
+model:
+  model_type: litgpt  # or 'smdm'
 ```
 
-### Running Tests
+## Citation
 
-To run the tests, you can use `pytest`:
-
-```bash
-pytest
-```
+This codebase extracts and adapts diffusion components from a larger protein language modeling project.

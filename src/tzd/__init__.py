@@ -1,4 +1,12 @@
-"""tzd - A minimal Hydra + PyTorch Lightning project."""
-from tzd.models import LitModel
+"""Tiny Zero Diffusion - A minimal diffusion language model framework."""
 
-__all__ = ["LitModel"]
+from tzd.models import BaseModel, DiffusionModel
+from tzd.data import TinyShakespeareDataModule
+
+__version__ = "0.0.1"
+
+__all__ = [
+    "BaseModel",
+    "DiffusionModel",
+    "TinyShakespeareDataModule",
+]
