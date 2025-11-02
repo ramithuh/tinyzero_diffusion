@@ -10,18 +10,14 @@ A minimal diffusion language model framework built with Hydra + PyTorch Lightnin
 - **PyTorch Lightning**: Clean training loop with distributed training support
 - **WandB Integration**: Automatic logging of metrics and generated samples
 
-## Conda env set up & torch installation
+## Conda env set up & Installation
 ```
-conda create -n dlm python=3.11
+conda create -n tzd python=3.11
+conda activate tzd
 
 # install torch 2.9 with proper cuda that you need
 pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu130
-```
 
-
-## Installation
-
-```bash
 # Clone the repo with submodules
 git clone --recurse-submodules https://github.com/ramithuh/tinyzero_diffusion.git
 cd tinyzero_diffusion
@@ -51,12 +47,12 @@ bash train_diffusion.sh
 
 ```
 tinyzero_diffusion/
+├── litgpt_diffusion/           # Submodule: Custom LitGPT fork (diffusion branch)
 ├── src/tzd/                    # Main package
 │   ├── models/                 # Model implementations
 │   │   ├── diffusion.py        # Main diffusion model
 │   │   ├── smdm/               # SMDM backend
-│   │   ├── llada/              # LLaDA inference
-│   │   └── litgpt_diffusion/   # LitGPT backend
+│   │   └── llada/              # LLaDA inference
 │   ├── data/                   # Data modules
 │   │   └── datamodule.py       # TinyShakespeare datamodule
 │   └── utils/                  # Utilities
