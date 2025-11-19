@@ -44,7 +44,7 @@ class DiffusionModel(BaseModel):
         self.block_size = block_size
         self.vocab_size = tokenizer.vocab_size
         self.model_type = model_type
-        self.mask_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+        self.mask_token_id = tokenizer.mask_token_id
 
         # inference parameters
         self.val_generation_freq   = kwargs.get("val_generation_freq", 5)

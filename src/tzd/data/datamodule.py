@@ -46,13 +46,10 @@ class TinyShakespeareDataset(Dataset):
             tokens = tokenizer.encode(self.text, add_special_tokens=False)
             print(f"[DEBUG] Encoded {len(tokens)} tokens.")
 
-            # 2. Determine Strategy based on Tokenizer
             bos_id = tokenizer.bos_token_id
             
             if bos_id is None:
-                # --- Qwen2.5 Strategy (No BOS) ---
-                # We need exactly 'block_size' tokens from the text.
-                print("[DEBUG] Model type: Qwen (No BOS). Using raw chunks.")
+                print("[DEBUG] Model type: (No BOS). Using raw chunks.")
                 chunk_size = block_size
                 
                 self.data = [
@@ -60,8 +57,6 @@ class TinyShakespeareDataset(Dataset):
                     for i in range(0, len(tokens) - chunk_size, chunk_size)
                 ]
             else:
-                # --- Llama Strategy (With BOS) ---
-                # We take 'block_size - 1' tokens and prepend BOS.
                 print(f"[DEBUG] Model type: Standard (BOS found: {bos_id}). Prepending BOS.")
                 chunk_size = block_size - 1
                 

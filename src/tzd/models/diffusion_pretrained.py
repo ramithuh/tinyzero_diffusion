@@ -59,6 +59,41 @@ def from_pretrained(
         ...     checkpoint_dir=Path("checkpoints/Qwen/Qwen2.5-3B"),
         ... )
     """
+    # DEBUG: Check what tokenizer actually is
+    print(f"\n{'='*60}")
+    print(f"DEBUG: from_pretrained() tokenizer analysis")
+    print(f"{'='*60}")
+    print(f"Type: {type(tokenizer)}")
+    print(f"Value: {tokenizer}")
+    if hasattr(tokenizer, 'vocab_size'):
+        print(f"Has vocab_size: {tokenizer.vocab_size}")
+    else:
+        print(f"WARNING: tokenizer does not have vocab_size attribute!")
+    print(f"{'='*60}\n")
+    
+    # 1. Set the Anchor (BOS)
+    # Qwen doesn't set this by default, so we force it.
+    tokenizer.bos_token = "<|im_start|>"
+    tokenizer.bos_token_id = tokenizer.convert_tokens_to_ids("<|im_start|>") # Should be 151644
+
+    # 2. Set the Padding (PAD)
+    # Your output shows this is already set, but being explicit never hurts.
+    tokenizer.pad_token = "<|endoftext|>"
+    tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<|endoftext|>") # Should be 151643
+
+    # 3. Add the Noise Token (MASK)
+    # We add a new special token to avoid conflict with PAD/EOS
+    if "<|MASK|>" not in tokenizer.get_vocab():
+        tokenizer.add_special_tokens({"additional_special_tokens": ["<|MASK|>"]})
+        
+    # Force the attribute so we can find it easily later
+    tokenizer.mask_token = "<|MASK|>"
+    tokenizer.mask_token_id = tokenizer.convert_tokens_to_ids("<|MASK|>")
+
+    print(f"[CONFIG] BOS ID: {tokenizer.bos_token_id} (<|im_start|>)")
+    print(f"[CONFIG] PAD ID: {tokenizer.pad_token_id} (<|endoftext|>)")
+    print(f"[CONFIG] MASK ID: {tokenizer.mask_token_id} (<|MASK|>)")
+
     # Load LitGPT config by name
     try:
         litgpt_config = LitGPTConfig.from_name(pretrained_model_name)
@@ -92,6 +127,13 @@ def from_pretrained(
     print(f"Diffusion settings:")
     print(f"  Causal attention: {litgpt_config.causal} (non-causal for diffusion)")
     print(f"{'='*60}\n")
+
+    # Update vocab size in config if tokenizer was extended (e.g., added MASK token)
+    if tokenizer.vocab_size != litgpt_config.vocab_size:
+        print(f"[INFO] Tokenizer vocab size ({tokenizer.vocab_size}) differs from config ({litgpt_config.vocab_size})")
+        print(f"[INFO] Updating config to match tokenizer (likely due to added special tokens)")
+        litgpt_config.vocab_size = tokenizer.vocab_size
+        litgpt_config.padded_vocab_size = tokenizer.vocab_size
 
     # Create DiffusionModel with LitGPT architecture
     # We pass the full litgpt_config in kwargs, which contains all architecture details
