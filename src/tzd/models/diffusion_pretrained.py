@@ -81,14 +81,16 @@ def from_pretrained(
     tokenizer.pad_token = "<|endoftext|>"
     tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<|endoftext|>") # Should be 151643
 
-    # 3. Add the Noise Token (MASK)
-    # We add a new special token to avoid conflict with PAD/EOS
-    if "<|MASK|>" not in tokenizer.get_vocab():
-        tokenizer.add_special_tokens({"additional_special_tokens": ["<|MASK|>"]})
+    tokenizer.mask_token ="<|fim_middle|>"
+    tokenizer.mask_token_id = tokenizer.convert_tokens_to_ids("<|fim_middle|>")    
+    # # 3. Add the Noise Token (MASK)
+    # # We add a new special token to avoid conflict with PAD/EOS
+    # if "<|MASK|>" not in tokenizer.get_vocab():
+    #     tokenizer.add_special_tokens({"additional_special_tokens": ["<|MASK|>"]})
         
-    # Force the attribute so we can find it easily later
-    tokenizer.mask_token = "<|MASK|>"
-    tokenizer.mask_token_id = tokenizer.convert_tokens_to_ids("<|MASK|>")
+    # # Force the attribute so we can find it easily later
+    # tokenizer.mask_token = "<|MASK|>"
+    # tokenizer.mask_token_id = tokenizer.convert_tokens_to_ids("<|MASK|>")
 
     print(f"[CONFIG] BOS ID: {tokenizer.bos_token_id} (<|im_start|>)")
     print(f"[CONFIG] PAD ID: {tokenizer.pad_token_id} (<|endoftext|>)")
