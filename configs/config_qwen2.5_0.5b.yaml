@@ -1,0 +1,23 @@
+# Complete training config for Qwen2.5-0.5B Diffusion Model
+
+defaults:
+  - model: qwen2.5_0.5b
+  - tokenizer: qwen2.5
+  - training: default
+  - data: shakespeare
+  - _self_
+
+seed: 42
+
+# Override training params for finetuning pretrained model
+training:
+  epochs: 10  # Fewer epochs for finetuning
+  save_dir: ${hydra:runtime.output_dir}/qwen2.5_0.5b_diffusion
+  val_generation_freq: 2  # Generate samples every 2 epochs
+
+# WandB logger
+logger:
+ _target_: lightning.pytorch.loggers.WandbLogger
+ entity: tiny-zero-diffusion
+ project: diffusion_lm
+ name: ${oc.select:experiment_suffix,null}
