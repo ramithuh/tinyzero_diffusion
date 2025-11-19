@@ -12,6 +12,8 @@ model:
   model_alias: qwen2.5_1.5b_diffusion
   lr: 1e-5
 
+  block_size: 256
+  
   # Download with: litgpt download Qwen/Qwen2.5-1.5B
   checkpoint_dir: /home/ruh/mlops-spark-jobs/tinyzero_diffusion-1763529458090/checkpoints/Qwen/Qwen2.5-1.5B
 
