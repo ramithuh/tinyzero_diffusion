@@ -9,6 +9,16 @@ defaults:
 
 seed: 42
 
+data:
+  block_size: ${model.block_size}
+  batch_size: 64
+  num_workers: 1
+  tokenizer: ${tokenizer}
+
+model:
+  tokenizer: ${tokenizer}
+  lr: 0.0005
+
 # Override training params for finetuning pretrained model
 training:
   epochs: 10  # Fewer epochs for finetuning
