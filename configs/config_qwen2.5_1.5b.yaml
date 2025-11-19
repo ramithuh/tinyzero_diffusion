@@ -1,18 +1,10 @@
-# Complete training config for Qwen2.5-3B Diffusion Model
-#
-# Usage:
-#   # Train with random weights (architecture only):
-#   python train.py --config-name config_qwen2.5_0.5b
-#
-#   # Train with pretrained weights (download first):
-#   litgpt download Qwen/Qwen2.5-3B
-#   python train.py --config-name config_qwen2.5_0.5b model.checkpoint_dir=checkpoints/Qwen/Qwen2.5-3B
+# Complete training config for Qwen2.5-1.5B Diffusion Model
 
 defaults:
   - model: qwen2.5_1.5b
-  - data: shakespeare  # Change to your dataset
-  - training: default
   - tokenizer: qwen2.5
+  - training: default
+  - data: shakespeare
   - _self_
 
 seed: 42
