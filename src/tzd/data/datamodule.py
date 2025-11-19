@@ -25,33 +25,55 @@ class TinyShakespeareDataset(Dataset):
             block_size: Maximum sequence length. If black_size == -1, then random sample length
             tokenizer: Tokenizer to use for encoding text
         """
+        import os
+        print(f"\n[DEBUG TinyShakespeareDataset.__init__] PID={os.getpid()}")
+        print(f"[DEBUG] tokenizer type: {type(tokenizer)}")
+        print(f"[DEBUG] tokenizer is None: {tokenizer is None}")
+        if tokenizer is not None and hasattr(tokenizer, 'vocab_size'):
+            print(f"[DEBUG] tokenizer.vocab_size: {tokenizer.vocab_size}")
 
         self.tokenizer = tokenizer
-        self.block_size = block_size - 1  # Reserve one token for the <bos> token
+        self.block_size = block_size
         self.data_dir = data_dir
 
         # Download and load the text
         self.text = self._load_shakespeare_data()
         self.data = []
 
-        print(f"[DEBUG] About to encode text, len={len(self.text)}")
         try:
+            # 1. Encode full text first
+            print(f"[DEBUG] Encoding text (len={len(self.text)})...")
             tokens = tokenizer.encode(self.text, add_special_tokens=False)
-            print(f"[DEBUG] Successfully encoded, num_tokens={len(tokens)}")
+            print(f"[DEBUG] Encoded {len(tokens)} tokens.")
 
-            # Handle tokenizers without BOS token (e.g., Qwen)
-            # Use EOS token as BOS if BOS is not available
-            bos_token_id = tokenizer.bos_token_id
-            if bos_token_id is None:
-                print(f"[DEBUG] WARNING: tokenizer.bos_token_id is None, using eos_token_id={tokenizer.eos_token_id} instead")
-                bos_token_id = tokenizer.eos_token_id
+            # 2. Determine Strategy based on Tokenizer
+            bos_id = tokenizer.bos_token_id
+            
+            if bos_id is None:
+                # --- Qwen2.5 Strategy (No BOS) ---
+                # We need exactly 'block_size' tokens from the text.
+                print("[DEBUG] Model type: Qwen (No BOS). Using raw chunks.")
+                chunk_size = block_size
+                
+                self.data = [
+                    tokens[i : i + chunk_size]
+                    for i in range(0, len(tokens) - chunk_size, chunk_size)
+                ]
+            else:
+                # --- Llama Strategy (With BOS) ---
+                # We take 'block_size - 1' tokens and prepend BOS.
+                print(f"[DEBUG] Model type: Standard (BOS found: {bos_id}). Prepending BOS.")
+                chunk_size = block_size - 1
+                
+                self.data = [
+                    [bos_id] + tokens[i : i + chunk_size]
+                    for i in range(0, len(tokens) - chunk_size, chunk_size)
+                ]
 
-            self.data = [[bos_token_id] + tokens[i:i + self.block_size]
-                         for i in range(0, len(tokens) - self.block_size, self.block_size)]
-            print(f"[DEBUG] Created {len(self.data)} sequences with bos_token_id={bos_token_id}")
+            print(f"[DEBUG] Dataset created: {len(self.data)} samples of length {len(self.data[0])}")
+
         except Exception as e:
             print(f"[DEBUG] ERROR during tokenization: {e}")
-            print(f"[DEBUG] Leaving self.data as empty list")
             import traceback
             traceback.print_exc()
 
