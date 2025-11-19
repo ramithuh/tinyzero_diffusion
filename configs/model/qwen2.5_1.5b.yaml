@@ -15,7 +15,7 @@ model:
   block_size: 256
 
   # Download with: litgpt download Qwen/Qwen2.5-1.5B
-  checkpoint_dir: /home/ruh/mlops-spark-jobs/tinyzero_diffusion-1763529458090/checkpoints/Qwen/Qwen2.5-1.5B
+  checkpoint_dir: /data/user_data/ruh/mlops-spark-jobs/checkpoints/Qwen/Qwen2.5-1.5B
 
   # Generation parameters
   val_generation_freq: ${training.val_generation_freq}
