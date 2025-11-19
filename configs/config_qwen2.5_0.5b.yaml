@@ -9,6 +9,11 @@ defaults:
 
 seed: 42
 
+# Override Hydra output directory
+hydra:
+  run:
+    dir: /data/user_data/ruh/mlops-spark-jobs/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
 data:
   block_size: ${model.block_size}
   batch_size: 64

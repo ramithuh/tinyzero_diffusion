@@ -9,6 +9,11 @@ defaults:
 
 seed: 42
 
+# Override Hydra output directory
+hydra:
+  run:
+    dir: /data/user_data/ruh/mlops-spark-jobs/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
 data:
   block_size: ${model.block_size}
   batch_size: 64
@@ -22,7 +27,7 @@ model:
 # Override training params for finetuning pretrained model
 training:
   epochs: 10  # Fewer epochs for finetuning
-  save_dir: ${hydra:runtime.output_dir}/qwen2.5_1.5b_diffusion
+  save_dir: ${hydra:runtime.output_dir}/checkpoints
   val_generation_freq: 2  # Generate samples every 2 epochs
 
 # WandB logger
