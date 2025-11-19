@@ -25,7 +25,7 @@ def generate_samples(
 
     with torch.no_grad():
         # Use the model's configured sampling method (LLaDA or SMDM)
-        repo = getattr(model, 'sampling_repo', 'SMDM')
+        repo = getattr(model, 'sampling_repo', 'LLaDA')  # Default to LLaDA (SMDM requires rotary_emb)
         samples = model.sample(
             batch_size=batch_size,
             seq_len=seq_len,

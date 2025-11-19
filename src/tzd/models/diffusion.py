@@ -33,7 +33,7 @@ class DiffusionModel(BaseModel):
         block_size: int,
         tokenizer: callable,
         bias: bool = True,
-        model_type: str = "smdm",  # 'smdm' or 'litgpt'
+        model_type: str = "litgpt",  # 'smdm' or 'litgpt'
         **kwargs
     ):
         """
@@ -51,7 +51,7 @@ class DiffusionModel(BaseModel):
         self.generation_block_size = kwargs.get("generation_block_size", block_size)
         self.val_temperatures       = kwargs.get("val_temperatures", [1.0])
         self.generation_num_steps  = kwargs.get("generation_num_steps", block_size // 2)
-        self.sampling_repo         = kwargs.get("sampling_repo", "SMDM")  # Default to SMDM
+        self.sampling_repo         = kwargs.get("sampling_repo", "LLaDA")  # Default to LLaDA (SMDM requires rotary_emb)
 
         self.unk_token_id = tokenizer.unk_token_id  # unknown token id that avoid loss computation
 
@@ -183,14 +183,14 @@ class DiffusionModel(BaseModel):
                 import traceback
                 traceback.print_exc()
 
-    def sample(self, batch_size=1, seq_len=None, num_steps=None, temperature=1.0, repo="SMDM"):
+    def sample(self, batch_size=1, seq_len=None, num_steps=None, temperature=1.0, repo="LLaDA"):
         """Call inference functions borrowed from SMDM's & LLaDA's inference.py
 
         :param batch_size: Number of sequences to generate
         :param seq_len: Length of sequences to generate (defaults to model's block_size)
         :param num_steps: Number of denoising steps (defaults to seq_len // 2)
         :param temperature: Sampling temperature (0.0 for greedy)
-        :param repo: Sampling method to use ('SMDM' or 'LLaDA')
+        :param repo: Sampling method to use ('LLaDA' or 'SMDM'). Defaults to 'LLaDA' (SMDM requires rotary_emb)
         :return tokens: Generated sequences of shape (batch_size, seq_len)
         """
         device = next(self.parameters()).device
