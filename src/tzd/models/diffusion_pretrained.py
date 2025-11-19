@@ -81,8 +81,8 @@ def from_pretrained(
     tokenizer.pad_token = "<|endoftext|>"
     tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<|endoftext|>") # Should be 151643
 
-    tokenizer.mask_token ="<|fim_middle|>"
-    tokenizer.mask_token_id = tokenizer.convert_tokens_to_ids("<|fim_middle|>")    
+    tokenizer.mask_token = "<|endoftext|>"
+    tokenizer.mask_token_id = tokenizer.convert_tokens_to_ids("<|endoftext|>")    
     # # 3. Add the Noise Token (MASK)
     # # We add a new special token to avoid conflict with PAD/EOS
     # if "<|MASK|>" not in tokenizer.get_vocab():
@@ -94,7 +94,7 @@ def from_pretrained(
 
     print(f"[CONFIG] BOS ID: {tokenizer.bos_token_id} (<|im_start|>)")
     print(f"[CONFIG] PAD ID: {tokenizer.pad_token_id} (<|endoftext|>)")
-    print(f"[CONFIG] MASK ID: {tokenizer.mask_token_id} (<|MASK|>)")
+    print(f"[CONFIG] MASK ID: {tokenizer.mask_token_id} {tokenizer.mask_token}")
 
     # Load LitGPT config by name
     try:
