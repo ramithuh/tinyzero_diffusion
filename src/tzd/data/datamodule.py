@@ -34,9 +34,26 @@ class TinyShakespeareDataset(Dataset):
         self.text = self._load_shakespeare_data()
         self.data = []
 
-        tokens = tokenizer.encode(self.text, add_special_tokens=False)
-        self.data = [[tokenizer.bos_token_id] + tokens[i:i + self.block_size]
-                     for i in range(0, len(tokens) - self.block_size, self.block_size)]
+        print(f"[DEBUG] About to encode text, len={len(self.text)}")
+        try:
+            tokens = tokenizer.encode(self.text, add_special_tokens=False)
+            print(f"[DEBUG] Successfully encoded, num_tokens={len(tokens)}")
+
+            # Handle tokenizers without BOS token (e.g., Qwen)
+            # Use EOS token as BOS if BOS is not available
+            bos_token_id = tokenizer.bos_token_id
+            if bos_token_id is None:
+                print(f"[DEBUG] WARNING: tokenizer.bos_token_id is None, using eos_token_id={tokenizer.eos_token_id} instead")
+                bos_token_id = tokenizer.eos_token_id
+
+            self.data = [[bos_token_id] + tokens[i:i + self.block_size]
+                         for i in range(0, len(tokens) - self.block_size, self.block_size)]
+            print(f"[DEBUG] Created {len(self.data)} sequences with bos_token_id={bos_token_id}")
+        except Exception as e:
+            print(f"[DEBUG] ERROR during tokenization: {e}")
+            print(f"[DEBUG] Leaving self.data as empty list")
+            import traceback
+            traceback.print_exc()
 
     def _load_shakespeare_data(self) -> str:
         """Download and load the tinyshakespeare dataset."""
@@ -97,10 +114,12 @@ class TinyShakespeareDataModule(L.LightningDataModule):
         super().__init__()
 
         if tokenizer is None:
-            from transformers import AutoTokenizer
-            self.tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-30b")
-        else:
-            self.tokenizer = tokenizer
+            raise ValueError(
+                "Tokenizer must be provided explicitly! "
+                "Configure it in your config file under 'data.tokenizer: ${tokenizer}'"
+            )
+
+        self.tokenizer = tokenizer
 
         self.batch_size = batch_size
         self.num_workers = num_workers
