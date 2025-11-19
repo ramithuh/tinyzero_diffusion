@@ -79,20 +79,27 @@ class DiffusionModel(BaseModel):
 
         elif model_type == "litgpt":
             # New LitGPT path with non-causal attention
-            config = LitGPTConfig(
-                vocab_size=self.vocab_size,
-                padded_vocab_size=self.vocab_size,
-                n_layer=n_layer,
-                n_head=n_head,
-                n_embd=n_embd,
-                block_size=block_size,
-                bias=bias,
-                causal=False,  # Non-causal attention for diffusion
-                norm_class_name=kwargs.get("norm_class_name", "LayerNorm"),
-                mlp_class_name=kwargs.get("mlp_class_name", "GptNeoxMLP"),
-                intermediate_size=kwargs.get("intermediate_size", 4 * n_embd),
-                rotary_percentage=kwargs.get("rotary_percentage", 1.0),
-            )
+            # If a pre-built litgpt_config is provided (from pretrained), use it
+            if "litgpt_config" in kwargs:
+                config = kwargs["litgpt_config"]
+                # Ensure causal=False for diffusion
+                config.causal = False
+            else:
+                # Build config from scratch
+                config = LitGPTConfig(
+                    vocab_size=self.vocab_size,
+                    padded_vocab_size=self.vocab_size,
+                    n_layer=n_layer,
+                    n_head=n_head,
+                    n_embd=n_embd,
+                    block_size=block_size,
+                    bias=bias,
+                    causal=False,  # Non-causal attention for diffusion
+                    norm_class_name=kwargs.get("norm_class_name", "LayerNorm"),
+                    mlp_class_name=kwargs.get("mlp_class_name", "GptNeoxMLP"),
+                    intermediate_size=kwargs.get("intermediate_size", 4 * n_embd),
+                    rotary_percentage=kwargs.get("rotary_percentage", 1.0),
+                )
             self.model = GPT(config)
         else:
             raise ValueError(f"Unknown model_type: {model_type}. Supported: 'smdm', 'litgpt'")
