@@ -1,0 +1,42 @@
+# Complete training config for Qwen2.5-0.5B Diffusion Model
+
+defaults:
+  - model: qwen2.5_0.5b
+  - tokenizer: qwen2.5
+  - training: default
+  - data: shakespeare
+  - _self_
+
+seed: 42
+
+# Override Hydra output directory
+hydra:
+  run:
+    dir: /data/user_data/ruh/mlops-spark-jobs/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+tokenizer:
+  pretrained_model_name_or_path: "Qwen/Qwen2.5-0.5B"
+
+data:
+  block_size: ${model.block_size}
+  batch_size: 64
+  num_workers: 1
+  tokenizer: ${tokenizer}
+
+model:
+  tokenizer: ${tokenizer}
+  lr: 0.0005
+
+# Override training params for finetuning pretrained model
+training:
+  save_dir: ${hydra:runtime.output_dir}/checkpoints
+  epochs: 200
+  gradient_accumulation_steps: 3
+  val_generation_freq: 5
+
+# WandB logger
+logger:
+ _target_: lightning.pytorch.loggers.WandbLogger
+ entity: tiny-zero-diffusion
+ project: diffusion_lm
+ name: ${oc.select:experiment_suffix,null}

@@ -1,0 +1,4 @@
+conda_env: "tzd"
+train_script: "train.py"
+install_editable: true
+package_name: "tzd"

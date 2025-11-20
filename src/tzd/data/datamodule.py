@@ -25,18 +25,52 @@ class TinyShakespeareDataset(Dataset):
             block_size: Maximum sequence length. If black_size == -1, then random sample length
             tokenizer: Tokenizer to use for encoding text
         """
+        import os
+        print(f"\n[DEBUG TinyShakespeareDataset.__init__] PID={os.getpid()}")
+        print(f"[DEBUG] tokenizer type: {type(tokenizer)}")
+        print(f"[DEBUG] tokenizer is None: {tokenizer is None}")
+        if tokenizer is not None and hasattr(tokenizer, 'vocab_size'):
+            print(f"[DEBUG] tokenizer.vocab_size: {tokenizer.vocab_size}")
 
         self.tokenizer = tokenizer
-        self.block_size = block_size - 1  # Reserve one token for the <bos> token
+        self.block_size = block_size
         self.data_dir = data_dir
 
         # Download and load the text
         self.text = self._load_shakespeare_data()
         self.data = []
 
-        tokens = tokenizer.encode(self.text, add_special_tokens=False)
-        self.data = [[tokenizer.bos_token_id] + tokens[i:i + self.block_size]
-                     for i in range(0, len(tokens) - self.block_size, self.block_size)]
+        try:
+            # 1. Encode full text first
+            print(f"[DEBUG] Encoding text (len={len(self.text)})...")
+            tokens = tokenizer.encode(self.text, add_special_tokens=False)
+            print(f"[DEBUG] Encoded {len(tokens)} tokens.")
+
+            bos_id = tokenizer.bos_token_id
+            
+            if bos_id is None:
+                print("[DEBUG] Model type: (No BOS). Using raw chunks.")
+                chunk_size = block_size
+                
+                self.data = [
+                    tokens[i : i + chunk_size]
+                    for i in range(0, len(tokens) - chunk_size, chunk_size)
+                ]
+            else:
+                print(f"[DEBUG] Model type: Standard (BOS found: {bos_id}). Prepending BOS.")
+                chunk_size = block_size - 1
+                
+                self.data = [
+                    [bos_id] + tokens[i : i + chunk_size]
+                    for i in range(0, len(tokens) - chunk_size, chunk_size)
+                ]
+
+            print(f"[DEBUG] Dataset created: {len(self.data)} samples of length {len(self.data[0])}")
+
+        except Exception as e:
+            print(f"[DEBUG] ERROR during tokenization: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _load_shakespeare_data(self) -> str:
         """Download and load the tinyshakespeare dataset."""
@@ -97,10 +131,12 @@ class TinyShakespeareDataModule(L.LightningDataModule):
         super().__init__()
 
         if tokenizer is None:
-            from transformers import AutoTokenizer
-            self.tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-30b")
-        else:
-            self.tokenizer = tokenizer
+            raise ValueError(
+                "Tokenizer must be provided explicitly! "
+                "Configure it in your config file under 'data.tokenizer: ${tokenizer}'"
+            )
+
+        self.tokenizer = tokenizer
 
         self.batch_size = batch_size
         self.num_workers = num_workers

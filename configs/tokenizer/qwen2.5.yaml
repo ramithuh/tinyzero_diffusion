@@ -1,0 +1,9 @@
+# @package _global_
+# Qwen2.5 Tokenizer Config
+#
+# Works for all Qwen2.5 models (0.5B, 1.5B, 3B, 7B, etc.)
+
+tokenizer:
+  _target_: transformers.AutoTokenizer.from_pretrained
+  pretrained_model_name_or_path: ""
+  trust_remote_code: false  # Qwen2.5 doesn't need remote code

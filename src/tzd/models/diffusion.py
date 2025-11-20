@@ -33,7 +33,7 @@ class DiffusionModel(BaseModel):
         block_size: int,
         tokenizer: callable,
         bias: bool = True,
-        model_type: str = "smdm",  # 'smdm' or 'litgpt'
+        model_type: str = "litgpt",  # 'smdm' or 'litgpt'
         **kwargs
     ):
         """
@@ -44,14 +44,14 @@ class DiffusionModel(BaseModel):
         self.block_size = block_size
         self.vocab_size = tokenizer.vocab_size
         self.model_type = model_type
-        self.mask_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+        self.mask_token_id = tokenizer.mask_token_id
 
         # inference parameters
         self.val_generation_freq   = kwargs.get("val_generation_freq", 5)
         self.generation_block_size = kwargs.get("generation_block_size", block_size)
         self.val_temperatures       = kwargs.get("val_temperatures", [1.0])
         self.generation_num_steps  = kwargs.get("generation_num_steps", block_size // 2)
-        self.sampling_repo         = kwargs.get("sampling_repo", "SMDM")  # Default to SMDM
+        self.sampling_repo         = kwargs.get("sampling_repo", "LLaDA")  # Default to LLaDA (SMDM requires rotary_emb)
 
         self.unk_token_id = tokenizer.unk_token_id  # unknown token id that avoid loss computation
 
@@ -79,20 +79,27 @@ class DiffusionModel(BaseModel):
 
         elif model_type == "litgpt":
             # New LitGPT path with non-causal attention
-            config = LitGPTConfig(
-                vocab_size=self.vocab_size,
-                padded_vocab_size=self.vocab_size,
-                n_layer=n_layer,
-                n_head=n_head,
-                n_embd=n_embd,
-                block_size=block_size,
-                bias=bias,
-                causal=False,  # Non-causal attention for diffusion
-                norm_class_name=kwargs.get("norm_class_name", "LayerNorm"),
-                mlp_class_name=kwargs.get("mlp_class_name", "GptNeoxMLP"),
-                intermediate_size=kwargs.get("intermediate_size", 4 * n_embd),
-                rotary_percentage=kwargs.get("rotary_percentage", 1.0),
-            )
+            # If a pre-built litgpt_config is provided (from pretrained), use it
+            if "litgpt_config" in kwargs:
+                config = kwargs["litgpt_config"]
+                # Ensure causal=False for diffusion
+                config.causal = False
+            else:
+                # Build config from scratch
+                config = LitGPTConfig(
+                    vocab_size=self.vocab_size,
+                    padded_vocab_size=self.vocab_size,
+                    n_layer=n_layer,
+                    n_head=n_head,
+                    n_embd=n_embd,
+                    block_size=block_size,
+                    bias=bias,
+                    causal=False,  # Non-causal attention for diffusion
+                    norm_class_name=kwargs.get("norm_class_name", "LayerNorm"),
+                    mlp_class_name=kwargs.get("mlp_class_name", "GptNeoxMLP"),
+                    intermediate_size=kwargs.get("intermediate_size", 4 * n_embd),
+                    rotary_percentage=kwargs.get("rotary_percentage", 1.0),
+                )
             self.model = GPT(config)
         else:
             raise ValueError(f"Unknown model_type: {model_type}. Supported: 'smdm', 'litgpt'")
@@ -176,14 +183,14 @@ class DiffusionModel(BaseModel):
                 import traceback
                 traceback.print_exc()
 
-    def sample(self, batch_size=1, seq_len=None, num_steps=None, temperature=1.0, repo="SMDM"):
+    def sample(self, batch_size=1, seq_len=None, num_steps=None, temperature=1.0, repo="LLaDA"):
         """Call inference functions borrowed from SMDM's & LLaDA's inference.py
 
         :param batch_size: Number of sequences to generate
         :param seq_len: Length of sequences to generate (defaults to model's block_size)
         :param num_steps: Number of denoising steps (defaults to seq_len // 2)
         :param temperature: Sampling temperature (0.0 for greedy)
-        :param repo: Sampling method to use ('SMDM' or 'LLaDA')
+        :param repo: Sampling method to use ('LLaDA' or 'SMDM'). Defaults to 'LLaDA' (SMDM requires rotary_emb)
         :return tokens: Generated sequences of shape (batch_size, seq_len)
         """
         device = next(self.parameters()).device

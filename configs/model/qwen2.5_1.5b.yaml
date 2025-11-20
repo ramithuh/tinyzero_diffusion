@@ -1,0 +1,25 @@
+# @package _global_
+# Qwen2.5-1.5B Pretrained Model Config
+#
+# Smaller model for faster training and testing.
+# Good for prototyping before scaling to 3B.
+
+model:
+  _target_: tzd.models.diffusion_pretrained.from_pretrained
+
+  pretrained_model_name: "Qwen2.5-1.5B"
+  tokenizer: ${tokenizer}
+  model_alias: qwen2.5_1.5b_diffusion
+  lr: 1e-5
+
+  block_size: 256
+
+  # Download with: litgpt download Qwen/Qwen2.5-1.5B
+  checkpoint_dir: /data/user_data/ruh/mlops-spark-jobs/checkpoints/Qwen/Qwen2.5-1.5B
+
+  # Generation parameters
+  val_generation_freq: ${training.val_generation_freq}
+  val_temperatures: [1.0]
+  generation_block_size: ${model.block_size}
+  generation_num_steps: 128
+  sampling_repo: LLaDA
