@@ -10,7 +10,7 @@ model:
   block_size: 256
 
   # Download with: litgpt download Qwen/Qwen2.5-0.5B
-  checkpoint_dir: /home/ruh/ramith/academics/10703/tinyzero_diffusion/checkpoints/Qwen/Qwen2.5-0.5B-Instruct
+  # checkpoint_dir: /home/ruh/ramith/academics/10703/tinyzero_diffusion/checkpoints/Qwen/Qwen2.5-0.5B-Instruct
 
   # Generation parameters
   val_generation_freq: ${training.val_generation_freq}
