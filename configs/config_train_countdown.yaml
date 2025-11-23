@@ -1,0 +1,36 @@
+# @package _global_
+
+defaults:
+  - model: qwen2.5_0.5b-instruct
+  - tokenizer: qwen2.5
+  - training: default
+  - data: countdown
+  - _self_
+
+# Override defaults here
+experiment_suffix: qwen2.5-0.5b-instruct-sft
+
+seed: 42
+
+tokenizer:
+  pretrained_model_name_or_path: "Qwen/Qwen2.5-0.5B-Instruct"
+
+data:
+  batch_size: 4
+  num_workers: 1
+  max_val_samples: 100
+  max_test_samples: 100
+
+model:
+  tokenizer: ${tokenizer}
+
+training:
+  save_dir: ${hydra:runtime.output_dir}/checkpoints
+  epochs: 1000
+  gradient_accumulation_steps: 3
+  val_generation_freq: 5
+
+logger:
+  _target_: lightning.pytorch.loggers.WandbLogger
+  project: diffusion_countdown
+  name: sft_baseline
