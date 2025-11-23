@@ -116,12 +116,14 @@ class DiffusionModel(BaseModel):
         else:
             raise ValueError(f"Unknown model_type: {self.model_type}")
 
-    def forward_process(self, batch, eps=1e-3):
+    def forward_process(self, batch, eps=1e-3, loss_mask=None):
         """
         Forward diffusion process: randomly mask tokens with the mask token.
 
         :param batch: Input tokens of shape (batch_size, seq_len)
         :param eps: Minimum masking probability to avoid fully unmasked sequences
+        :param loss_mask: Optional mask (1 for learnable, 0 for fixed/prompt). 
+                          If provided, fixed tokens (0) will NOT be masked.
 
         :returns noisy_batch: Tokens with some positions masked
         :returns mask_indices: Boolean tensor indicating which positions were masked
@@ -134,6 +136,12 @@ class DiffusionModel(BaseModel):
         p_mask = p_mask[:, None].repeat(1, l)
 
         mask_indices = torch.rand((b, l), device=batch.device) < p_mask
+        
+        # If loss_mask is provided, ensure fixed tokens (where mask is 0) are NEVER masked
+        if loss_mask is not None:
+            # loss_mask is 1 for completion (can be masked), 0 for prompt (keep fixed)
+            mask_indices = mask_indices & (loss_mask.bool())
+
         noisy_batch = torch.where(mask_indices, self.mask_token_id, batch)
         return noisy_batch, mask_indices, p_mask
 
@@ -148,11 +156,21 @@ class DiffusionModel(BaseModel):
         max_length = min(self.model.max_seq_length, batch["input_ids"].size(1) - 1)
         input_ids = batch["input_ids"][:, 0: max_length].contiguous().long()
 
-        noisy_tokens, mask_indices, p_mask = self.forward_process(input_ids)
+        # If batch provides a loss_mask (e.g. for masking prompts), use it
+        loss_mask_input = None
+        if "loss_mask" in batch:
+            # Extract loss mask matching the input_ids shape (truncated if needed)
+            loss_mask_input = batch["loss_mask"][:, 0: max_length].contiguous()
+
+        noisy_tokens, mask_indices, p_mask = self.forward_process(input_ids, loss_mask=loss_mask_input)
         logits = self.model(noisy_tokens)
 
         valid_tokens = input_ids != self.unk_token_id
         loss_mask    = mask_indices & valid_tokens
+
+        # If batch provides a loss_mask, apply it to the loss computation as well
+        if loss_mask_input is not None:
+            loss_mask = loss_mask & loss_mask_input.bool()
 
         # implement the re-weighted loss from SMDM
         loss = F.cross_entropy(logits[loss_mask], input_ids[loss_mask], reduction='none')
@@ -162,7 +180,7 @@ class DiffusionModel(BaseModel):
         return loss
 
     def on_validation_epoch_end(self):
-        """Generate samples and log to wandb at end of validation epoch."""
+        """Generate samples and log to wandb at end of validation epoch."""        
         # Only generate after training has started (skip epoch 0)
         if self.val_generation_freq and self.trainer.current_epoch > 0 and self.trainer.current_epoch % self.val_generation_freq == 0:
             try:
@@ -180,6 +198,7 @@ class DiffusionModel(BaseModel):
                     stage="validation"
                 )
             except Exception as e:
+                print(f"[DEBUG] ERROR in log_generations: {e}")
                 import traceback
                 traceback.print_exc()
 
