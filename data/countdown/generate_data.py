@@ -126,5 +126,5 @@ def generate_dataset(num_samples: int, output_file: str, min_nums: int = 3, max_
     print(f"Saved to {output_file}")
 
 if __name__ == "__main__":
-    generate_dataset(1000, "data/countdown/countdown_sft_train.jsonl")
-    generate_dataset(100, "data/countdown/countdown_sft_val.jsonl")
+    generate_dataset(1000, "data/countdown/countdown_sft_1k_train.jsonl")
+    generate_dataset(100, "data/countdown/countdown_sft_1k_val.jsonl")
