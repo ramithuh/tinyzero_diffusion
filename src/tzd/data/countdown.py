@@ -242,6 +242,10 @@ def download_countdown_dataset(save_dir: str) -> str:
 
 
 if __name__ == "__main__":
+    # Download dataset first
+    print("Downloading Countdown dataset...")
+    download_countdown_dataset("data/countdown")
+
     # Example usage and testing
     print("Testing CountdownDataset...")
     

@@ -195,6 +195,37 @@ class CountdownDataModule(L.LightningDataModule):
         """Decode a sequence of tokens into a string."""
         return self.tokenizer.decode(tokens, skip_special_tokens=True)
 
+    def get_validation_ground_truth(self, indices: List[int]) -> tuple[List[int], List[List[int]]]:
+        """
+        Get ground truth targets and numbers for validation samples.
+
+        Args:
+            indices: List of sample indices
+
+        Returns:
+            targets: List of target numbers
+            numbers: List of available numbers for each sample
+        """
+        targets = []
+        numbers = []
+
+        # Use val_dataset if available, otherwise fallback to test_dataset
+        dataset = self.val_dataset if self.val_dataset else self.test_dataset
+
+        for idx in indices:
+            if idx == -1: # Sentinel for unconditional generation
+                 continue
+            
+            if dataset and idx < len(dataset):
+                sample = dataset[idx]
+                targets.append(sample['target'])
+                numbers.append(sample['numbers'])
+            else:
+                # Handle edge case where dataset might not be ready or index out of bounds
+                pass
+
+        return targets, numbers
+
 
 if __name__ == "__main__":
     # Quick test
