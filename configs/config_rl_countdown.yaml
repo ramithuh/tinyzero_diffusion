@@ -20,7 +20,7 @@ data:
   val_file: "countdown_hf_val.jsonl"     # TinyZero's test split (1k)
   test_file: "countdown_cd3_test.jsonl"  # SPG's test set (256) - Keep for benchmarking
   num_workers: 0 # Set to 0 to avoid pickling model to workers (CPU OOM fix)
-  max_val_samples: 100
+  max_val_samples: 3 # Reduced to 3 for faster feedback loop (was 100)
   max_test_samples: 100
 
 # RL Module Configuration
@@ -29,7 +29,7 @@ rl_module:
   _target_: tzd.rl.module.RLDiffusionModule
   lr: 1e-6
   num_generations: 4
-  beta: 0.01
+  beta: 0.001 # Lowered to match TinyZero (was 0.01)
   use_ref_model: true # Critical for stability
   generation_kwargs:
     num_steps: 64
@@ -41,8 +41,10 @@ training:
   save_dir: ${hydra:runtime.output_dir}/checkpoints
   epochs: 10
   gradient_accumulation_steps: 8 # Reduced to 8 to maintain effective batch size of 16
-  val_generation_freq: 1
+  val_check_interval: 10 # Run validation every 10 steps (approx 40 mins) to match TinyZero
   precision: "bf16-mixed" # Use BF16 mixed precision to save memory
+  log_every_n_steps: 1 # Log every step since epochs are slow
+  # val_generation_freq removed - only used by base DiffusionModel, not RLDiffusionModule
 
 # Override model target to be the RL module
 # The RL module takes the base model as an argument
@@ -51,14 +53,16 @@ model:
   model:
     _target_: tzd.models.diffusion_pretrained.from_pretrained
     pretrained_model_name: "Qwen/Qwen2.5-0.5B-Instruct"
+    checkpoint_dir: "${hydra:runtime.cwd}/checkpoints/Qwen/Qwen2.5-0.5B-Instruct" # Load pretrained weights!
     tokenizer: ${tokenizer}
     model_alias: "qwen-0.5b-diffusion"
     lr: 1e-6 # Base model LR (can be same as RL module LR)
-    block_size: 2048
-    generation_block_size: 2048
+    block_size: 768
+    generation_block_size: 768
+    gradient_checkpointing: true # Enable GC to save memory (allows larger batch size)
   lr: 1e-6
   num_generations: 4
-  beta: 0.01
+  beta: 0.001
   use_ref_model: true
   generation_kwargs:
     num_steps: 64
@@ -69,3 +73,13 @@ logger:
   _target_: lightning.pytorch.loggers.WandbLogger
   project: diffusion_countdown
   name: rl_grpo_baseline
+
+callbacks:
+  model_checkpoint:
+    _target_: lightning.pytorch.callbacks.ModelCheckpoint
+    monitor: "val/reward_mean"
+    mode: "max"
+    save_top_k: 3
+    save_last: true
+    filename: "epoch={epoch}-step={step}-reward={val/reward_mean:.2f}"
+    auto_insert_metric_name: false
