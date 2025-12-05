@@ -10,12 +10,13 @@ import wandb
 from tzd.models.base import BaseModel
 from tzd.utils.generation import log_generations
 from tzd.models.llada.inference import generate as llada_sample
+from tzd.models.diffusion_rl import DiffusionRLMixin
 
 from litgpt.model import GPT
 from litgpt.config import Config as LitGPTConfig
 
 
-class DiffusionModel(BaseModel):
+class DiffusionModel(BaseModel, DiffusionRLMixin):
     """
     Diffusion model wrapper supporting both SMDM and LitGPT backends.
 
@@ -41,6 +42,7 @@ class DiffusionModel(BaseModel):
         """
         super().__init__(model_alias=model_alias, lr=lr)
 
+        self.tokenizer = tokenizer
         self.block_size = block_size
         self.vocab_size = tokenizer.vocab_size
         self.model_type = model_type
@@ -48,6 +50,7 @@ class DiffusionModel(BaseModel):
 
         # inference parameters
         self.val_generation_freq   = kwargs.get("val_generation_freq", 5)
+        print(f"DEBUG: DiffusionModel initialized with val_generation_freq={self.val_generation_freq}")
         self.generation_block_size = kwargs.get("generation_block_size", block_size)
         self.val_temperatures       = kwargs.get("val_temperatures", [1.0])
         self.generation_num_steps  = kwargs.get("generation_num_steps", block_size // 2)
@@ -181,8 +184,8 @@ class DiffusionModel(BaseModel):
 
     def on_validation_epoch_end(self):
         """Generate samples and log to wandb at end of validation epoch."""        
-        # Only generate after training has started (skip epoch 0)
-        if self.val_generation_freq and self.trainer.current_epoch > 0 and self.trainer.current_epoch % self.val_generation_freq == 0:
+        # Only generate after training has started
+        if self.val_generation_freq and self.trainer.current_epoch % self.val_generation_freq == 0:
             try:
                 log_generations(
                     trainer=self.trainer,
@@ -202,7 +205,7 @@ class DiffusionModel(BaseModel):
                 import traceback
                 traceback.print_exc()
 
-    def sample(self, batch_size=1, seq_len=None, num_steps=None, temperature=1.0, repo="LLaDA"):
+    def sample(self, batch_size=1, seq_len=None, num_steps=None, temperature=1.0, repo="LLaDA", prompts=None, block_length=None):
         """Call inference functions borrowed from SMDM's & LLaDA's inference.py
 
         :param batch_size: Number of sequences to generate
@@ -210,6 +213,8 @@ class DiffusionModel(BaseModel):
         :param num_steps: Number of denoising steps (defaults to seq_len // 2)
         :param temperature: Sampling temperature (0.0 for greedy)
         :param repo: Sampling method to use ('LLaDA' or 'SMDM'). Defaults to 'LLaDA' (SMDM requires rotary_emb)
+        :param prompts: Optional tensor of shape (batch_size, prompt_len) containing prompt tokens
+        :param block_length: Optional block length for semi-autoregressive generation (defaults to seq_len)
         :return tokens: Generated sequences of shape (batch_size, seq_len)
         """
         device = next(self.parameters()).device
@@ -220,7 +225,7 @@ class DiffusionModel(BaseModel):
             output_tokens = smdm_sample(
                 model=self.model,
                 tokenizer=None,
-                prompt=None,
+                prompt=prompts, # SMDM might support prompts, passing it through
                 batch_size=batch_size,
                 alg='origin',
                 steps=num_steps or self.generation_num_steps,
@@ -232,26 +237,69 @@ class DiffusionModel(BaseModel):
                 device=device
             )
         elif repo == "LLaDA":
-            # TODO: we currently focus only on unconditional generation
             # LLaDA's generate() only supports batch_size=1, so we loop
-            empty_prompt = torch.empty((1, 0), dtype=torch.long).to(device)
+            if prompts is not None:
+                # Conditional generation
+                assert prompts.shape[0] == batch_size, "Prompts batch size must match requested batch_size"
+                samples = []
+                for i in range(batch_size):
+                    # Get single prompt: (1, L)
+                    prompt = prompts[i].unsqueeze(0)
+                    
+                    # Calculate max possible generation length
+                    prompt_len = prompt.shape[1]
+                    max_gen_len = self.block_size - prompt_len
+                    requested_gen_len = seq_len or self.generation_block_size
+                    
+                    if requested_gen_len > max_gen_len:
+                        # print(f"Warning: Requested gen_len {requested_gen_len} + prompt_len {prompt_len} > block_size {self.block_size}. Truncating gen_len to {max_gen_len}.")
+                        actual_gen_len = max_gen_len
+                    else:
+                        actual_gen_len = requested_gen_len
 
-            samples = []
-            for _ in range(batch_size):
-                sample = llada_sample(
-                    model=self.model,
-                    prompt=empty_prompt,
-                    steps=num_steps or self.generation_num_steps,
-                    gen_length=seq_len or self.generation_block_size,
-                    block_length=seq_len or self.generation_block_size, # TODO: we do sampling without using semi-autoregressive decoding
-                    temperature=temperature,
-                    cfg_scale=0.0,
-                    remasking='low_confidence',
-                    mask_id=self.mask_token_id,
-                    device=device
-                )
-                samples.append(sample)
-            output_tokens = torch.cat(samples, dim=0)  # Stack to (batch_size, seq_len)
+                    sample = llada_sample(
+                        model=self.model,
+                        prompt=prompt,
+                        steps=num_steps or self.generation_num_steps,
+                        gen_length=actual_gen_len,
+                        block_length=block_length or actual_gen_len, # Use provided block_length or default to full gen_length
+                        temperature=temperature,
+                        cfg_scale=0.0,
+                        remasking='low_confidence',
+                        mask_id=self.mask_token_id,
+                        device=device
+                    )
+                    samples.append(sample)
+                output_tokens = torch.cat(samples, dim=0)
+            else:
+                # Unconditional generation
+                empty_prompt = torch.empty((1, 0), dtype=torch.long).to(device)
+                
+                # Calculate max possible generation length (same logic as conditional)
+                requested_gen_len = seq_len or self.generation_block_size
+                max_gen_len = self.block_size  # No prompt, so full block_size available
+                
+                if requested_gen_len > max_gen_len:
+                    actual_gen_len = max_gen_len
+                else:
+                    actual_gen_len = requested_gen_len
+                
+                samples = []
+                for _ in range(batch_size):
+                    sample = llada_sample(
+                        model=self.model,
+                        prompt=empty_prompt,
+                        steps=num_steps or self.generation_num_steps,
+                        gen_length=actual_gen_len,
+                        block_length=block_length or actual_gen_len, # Use provided block_length or default to full gen_length
+                        temperature=temperature,
+                        cfg_scale=0.0,
+                        remasking='low_confidence',
+                        mask_id=self.mask_token_id,
+                        device=device
+                    )
+                    samples.append(sample)
+                output_tokens = torch.cat(samples, dim=0)  # Stack to (batch_size, seq_len)
         else:
             raise ValueError(f"Unknown repo: {repo}. Supported repos are 'SMDM' and 'LLaDA'")
 
