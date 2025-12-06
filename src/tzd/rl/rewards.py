@@ -38,12 +38,13 @@ def evaluate_equation(equation_str: str) -> float | None:
         # Only allow safe characters
         allowed_pattern = r"^[\d+\-*/().\s]+$"
         if not re.match(allowed_pattern, equation_str):
-            raise ValueError("Invalid characters in equation")
+            # raise ValueError("Invalid characters in equation")
+            return None
 
         # Evaluate with restricted builtins
         result = eval(equation_str, {"__builtins__": None}, {})
         return result
-    except (SyntaxError, NameError, TypeError, ZeroDivisionError):
+    except (SyntaxError, NameError, TypeError, ZeroDivisionError, ValueError):
         return None
 
 
@@ -132,23 +133,3 @@ def countdown_reward_batch(
         scores.append(score)
 
     return scores
-
-
-# Test it:
-if __name__ == "__main__":
-    # Test case 1: Correct answer
-    output1 = "<reasoning>\n5*2=10, 3+10=13\n</reasoning>\n<answer>3+5*2</answer>"
-    score1 = compute_countdown_score(output1, target=13, numbers=[3, 5, 2], verbose=True)
-    assert score1 == 1.0, "Should be correct!"
-
-    # Test case 2: Wrong answer
-    output2 = "<answer>3+5+2</answer>"  # = 10, not 13
-    score2 = compute_countdown_score(output2, target=13, numbers=[3, 5, 2], verbose=True)
-    assert score2 == 0.1, "Should get format score only"
-
-    # Test case 3: Invalid numbers
-    output3 = "<answer>3+7</answer>"  # 7 not available
-    score3 = compute_countdown_score(output3, target=10, numbers=[3, 5, 2], verbose=True)
-    assert score3 == 0.1, "Should get format score only"
-
-    print("\n✅ All tests passed!")

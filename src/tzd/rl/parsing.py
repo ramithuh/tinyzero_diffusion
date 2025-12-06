@@ -20,12 +20,22 @@ def extract_countdown_answer(solution_str: str) -> str | None:
     Returns:
         Extracted equation string or None if not found
     """
+    # If full text is provided, try to split by assistant marker to avoid matching examples in prompt
+    if "<|im_start|>assistant" in solution_str:
+        solution_str = solution_str.split("<|im_start|>assistant")[-1]
+    elif "Assistant:" in solution_str:
+        solution_str = solution_str.split("Assistant:")[-1]
+
     answer_pattern = r"<answer>(.*?)</answer>"
     matches = re.findall(answer_pattern, solution_str, re.DOTALL)
 
     if matches:
         # Return last match (in case multiple <answer> tags)
-        return matches[-1].strip()
+        answer = matches[-1].strip()
+        # Strip \boxed{...} if present
+        if answer.startswith(r"\boxed{") and answer.endswith("}"):
+            answer = answer[7:-1]
+        return answer
 
     return None
 
