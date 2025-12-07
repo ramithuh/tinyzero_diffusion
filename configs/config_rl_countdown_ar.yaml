@@ -1,11 +1,38 @@
+# @package _global_
+
 defaults:
-  - config_rl_countdown
+  - tokenizer: qwen2.5
+  - training: default
+  - data: countdown
   - _self_
 
 experiment_suffix: "qwen2.5-0.5b-instruct-ar-rl-grpo"
 
+seed: 42
+
+tokenizer:
+  pretrained_model_name_or_path: "Qwen/Qwen2.5-0.5B-Instruct"
+
+data:
+  batch_size: 2  # Reduced to avoid memory spike (Safe: 2)
+  train_file: "countdown_hf_train.jsonl"
+  val_file: "countdown_hf_val.jsonl"
+  test_file: "countdown_cd3_test.jsonl"
+  num_workers: 0
+  max_val_samples: 3
+  max_test_samples: 100
+
+training:
+  save_dir: ${hydra:runtime.output_dir}/checkpoints
+  epochs: 10
+  gradient_accumulation_steps: 32 # 2 prompts * 4 gens * 32 accum = 256 batch size (Matches TinyZero)
+  val_check_interval: 10
+  precision: "bf16-mixed"
+  log_every_n_steps: 1
+
+# RL Module Configuration
 model:
-  _target_: tzd.rl.module.RLDiffusionModule
+  _target_: tzd.rl.module.RLModule
   model:
     _target_: tzd.models.autoregressive_pretrained.from_pretrained
     pretrained_model_name: "Qwen/Qwen2.5-0.5B-Instruct"
@@ -15,20 +42,43 @@ model:
     lr: 1e-6
     block_size: 768
     generation_block_size: 768
-  
+    
+    # Quantization & LoRA
+    quantize: "bnb.nf4" #null # Disable quantization for speed (0.5B model is tiny)
+    # lora_r: 128
+    # lora_alpha: 64
+    # lora_dropout: 0.05
+    # lora_query: true
+    # lora_key: true
+    # lora_value: true
+    # lora_projection: true
+    # lora_mlp: true
+    # lora_head: false
+
   # RL specific args
   lr: 1e-6
-  num_generations: 4
+  num_generations: 4 # Reduced to 4 (Safe)
   beta: 0.001
   use_ref_model: true
+  rl_method: grpo
+  clip_eps: 0.2
+  elbo_samples: 1
   
   generation_kwargs:
-    num_steps: 64  # Ignored by AR but kept for interface compatibility
+    num_steps: null  # Ignored by AR model
     temperature: 1.0
 
-training:
-  gradient_accumulation_steps: 8
-  val_generation_freq: 5
-  
 logger:
-  name: "ar_rl_grpo_baseline"
+  _target_: lightning.pytorch.loggers.WandbLogger
+  project: diffusion_countdown
+  name: ar_rl_grpo_baseline
+
+callbacks:
+  model_checkpoint:
+    _target_: lightning.pytorch.callbacks.ModelCheckpoint
+    monitor: "val/reward_mean"
+    mode: "max"
+    save_top_k: 3
+    save_last: true
+    filename: "epoch={epoch}-step={step}-reward={val/reward_mean:.2f}"
+    auto_insert_metric_name: false

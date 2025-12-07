@@ -26,7 +26,7 @@ data:
 # RL Module Configuration
 # We wrap the base model in the RL module
 rl_module:
-  _target_: tzd.rl.module.RLDiffusionModule
+  _target_: tzd.rl.module.RLModule
   lr: 1e-6
   num_generations: 4
   beta: 0.001 # Lowered to match TinyZero (was 0.01)
@@ -35,6 +35,8 @@ rl_module:
     num_steps: 64
     temperature: 1.0
   elbo_samples: 1 # Reduce ELBO samples to 1 to save memory
+  rl_method: spg
+  clip_eps: 0.2
 
 
 training:
@@ -49,7 +51,7 @@ training:
 # Override model target to be the RL module
 # The RL module takes the base model as an argument
 model:
-  _target_: tzd.rl.module.RLDiffusionModule
+  _target_: tzd.rl.module.RLModule
   model:
     _target_: tzd.models.diffusion_pretrained.from_pretrained
     pretrained_model_name: "Qwen/Qwen2.5-0.5B-Instruct"
@@ -59,8 +61,22 @@ model:
     lr: 1e-6 # Base model LR (can be same as RL module LR)
     block_size: 768
     generation_block_size: 768
+
+    
+    # Quantization & LoRA (Optional)
+    quantize: "bnb.nf4" # or null
+    lora_r: 128
+    lora_alpha: 64
+    lora_dropout: 0.05
+    lora_query: true
+    lora_key: true
+    lora_value: true
+    lora_projection: true
+    lora_mlp: true
+    lora_head: false
+  
   lr: 1e-6
-  num_generations: 4
+  num_generations: 8
   beta: 0.001
   use_ref_model: true
   generation_kwargs:

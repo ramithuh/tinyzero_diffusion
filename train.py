@@ -12,7 +12,11 @@ To control training configs, look at the following directories:
 Finally, configs/config.yaml combines above components (model, data, training, logger)
 """
 import os
+import torch
 import hydra
+
+# Enable TF32 for faster training on Ampere+ GPUs
+torch.set_float32_matmul_precision('medium')
 import wandb
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
