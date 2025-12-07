@@ -24,9 +24,8 @@ class CountdownDataset(Dataset):
         Expected output: <think>reasoning...</think>\n<answer> expression </answer>
     """
     
-    # Use TinyZero's Qwen template format for better comparison
-    # This matches: TinyZero/examples/data_preprocess/countdown.py line 65
-    SYSTEM_PROMPT = (
+    # Template for Qwen Instruct models
+    QWEN_INSTRUCT_TEMPLATE = (
         "<|im_start|>system\n"
         "You are a helpful assistant. You first thinks about the reasoning process in the mind and then provides the user with the answer.<|im_end|>\n"
         "<|im_start|>user\n"
@@ -38,13 +37,26 @@ class CountdownDataset(Dataset):
         "Let me solve this step by step.\n"
         "<think>"
     )
+
+    # Template for Base models (TinyZero/examples/data_preprocess/countdown.py line 59)
+    BASE_TEMPLATE = (
+        "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. "
+        "The assistant first thinks about the reasoning process in the mind and then provides the user with the answer.\n"
+        "User: Using the numbers {numbers}, create an equation that equals {target}. "
+        "You can use basic arithmetic operations (+, -, *, /) and each number can only be used once. "
+        "Show your work in <think> </think> tags. And return the final answer in <answer> </answer> tags, "
+        "for example <answer> (1 + 2) / 3 </answer>.\n"
+        "Assistant: Let me solve this step by step.\n"
+        "<think>"
+    )
     
     def __init__(
         self,
         data_path: str,
         tokenizer=None,
         add_reasoning_tag: bool = True,
-        max_samples: Optional[int] = None
+        max_samples: Optional[int] = None,
+        model_name: Optional[str] = None
     ):
         """
         Initialize the Countdown dataset.
@@ -54,12 +66,31 @@ class CountdownDataset(Dataset):
             tokenizer: Tokenizer for the model (optional, for compatibility)
             add_reasoning_tag: Whether to prefill <reasoning> tag in prompt
             max_samples: Maximum number of samples to load (None = all)
+            model_name: Name of the model to select appropriate template
         """
         self.data_path = data_path
         self.tokenizer = tokenizer
         self.add_reasoning_tag = add_reasoning_tag
         self.examples = self._load_data(data_path, max_samples)
         
+        # Select template
+        self.template = self._select_template(model_name)
+        
+    def _select_template(self, model_name: Optional[str]) -> str:
+        """Select the appropriate template based on model name."""
+        if model_name is None:
+            # Default to Instruct if unknown, or safe fallback
+            print("Warning: No model_name provided to CountdownDataset, defaulting to Qwen Instruct template.")
+            return self.QWEN_INSTRUCT_TEMPLATE
+            
+        model_name_lower = model_name.lower()
+        if "instruct" in model_name_lower:
+            print(f"Using Qwen Instruct template for model: {model_name}")
+            return self.QWEN_INSTRUCT_TEMPLATE
+        else:
+            print(f"Using Base template for model: {model_name}")
+            return self.BASE_TEMPLATE
+
     def _load_data(self, data_path: str, max_samples: Optional[int] = None) -> List[Dict]:
         """Load countdown examples from JSONL file."""
         examples = []
@@ -79,26 +110,20 @@ class CountdownDataset(Dataset):
     
     def _format_prompt(self, numbers: List[int], target: int) -> str:
         """
-        Format the countdown prompt following TinyZero's Qwen template.
+        Format the countdown prompt.
         """
-        # TinyZero's template already includes the question format, just fill in numbers and target
-        full_prompt = self.SYSTEM_PROMPT.format(numbers=numbers, target=target)
-
-        # TinyZero already pre-fills <think> tag in the template
-        # No need for add_reasoning_tag option
-
+        # Format using the selected template
+        full_prompt = self.template.format(numbers=numbers, target=target)
         return full_prompt
-    
+
     def __len__(self) -> int:
         """Return the number of examples in the dataset."""
         return len(self.examples)
 
     def _format_completion(self, reasoning: str, solution: str) -> str:
-        """Format the completion following TinyZero's format with <think> and <answer> tags."""
-        # TinyZero uses <think> instead of <reasoning>
-        # Answer is just the expression, no \boxed{}
-        # Prompt already pre-fills <think>, so we just add the content
-
+        """Format the completion with <think> and <answer> tags."""
+        # Both templates end with <think>, so we just append the content.
+        # Note: If templates change to NOT include <think>, this logic needs update.
         return f"\n{reasoning}\n</think>\n<answer> {solution} </answer>"
 
     def __getitem__(self, idx: int) -> Dict:

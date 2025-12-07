@@ -93,13 +93,21 @@ class CountdownDataModule(L.LightningDataModule):
             stage: 'fit', 'validate', 'test', or 'predict'
         """
         if stage == "fit" or stage is None:
+            # Determine model name for template selection
+            model_name = None
+            if hasattr(self.tokenizer, "name_or_path"):
+                model_name = self.tokenizer.name_or_path
+            elif hasattr(self.tokenizer, "name"):
+                model_name = self.tokenizer.name
+                
             # Training dataset
             if os.path.exists(self.train_file):
                 self.train_dataset = CountdownDataset(
                     data_path=self.train_file,
                     tokenizer=self.tokenizer,
                     add_reasoning_tag=self.add_reasoning_tag,
-                    max_samples=self.max_train_samples
+                    max_samples=self.max_train_samples,
+                    model_name=model_name
                 )
             else:
                 # Fallback: use test set for training (for quick experiments)
@@ -108,7 +116,8 @@ class CountdownDataModule(L.LightningDataModule):
                     data_path=self.test_file,
                     tokenizer=self.tokenizer,
                     add_reasoning_tag=self.add_reasoning_tag,
-                    max_samples=self.max_train_samples
+                    max_samples=self.max_train_samples,
+                    model_name=model_name
                 )
             
             # Validation dataset
@@ -117,7 +126,8 @@ class CountdownDataModule(L.LightningDataModule):
                     data_path=self.val_file,
                     tokenizer=self.tokenizer,
                     add_reasoning_tag=self.add_reasoning_tag,
-                    max_samples=self.max_val_samples
+                    max_samples=self.max_val_samples,
+                    model_name=model_name
                 )
             else:
                 # Fallback: use subset of test set
@@ -126,16 +136,25 @@ class CountdownDataModule(L.LightningDataModule):
                     data_path=self.test_file,
                     tokenizer=self.tokenizer,
                     add_reasoning_tag=self.add_reasoning_tag,
-                    max_samples=self.max_val_samples or 50
+                    max_samples=self.max_val_samples or 50,
+                    model_name=model_name
                 )
         
         if stage == "test" or stage is None:
+            # Determine model name for template selection (if not already set in fit)
+            model_name = None
+            if hasattr(self.tokenizer, "name_or_path"):
+                model_name = self.tokenizer.name_or_path
+            elif hasattr(self.tokenizer, "name"):
+                model_name = self.tokenizer.name
+
             # Test dataset
             self.test_dataset = CountdownDataset(
                 data_path=self.test_file,
                 tokenizer=self.tokenizer,
                 add_reasoning_tag=self.add_reasoning_tag,
-                max_samples=self.max_test_samples
+                max_samples=self.max_test_samples,
+                model_name=model_name
             )
     
     def train_dataloader(self) -> DataLoader:
