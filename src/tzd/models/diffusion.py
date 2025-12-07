@@ -61,6 +61,21 @@ class DiffusionModel(BaseModel, DiffusionRLMixin):
         self.sampling_repo         = kwargs.get("sampling_repo", "LLaDA")  # Default to LLaDA (SMDM requires rotary_emb)
 
         self.unk_token_id = tokenizer.unk_token_id  # unknown token id that avoid loss computation
+        
+        # Initialize mask_token_id
+        if hasattr(tokenizer, "mask_token_id") and tokenizer.mask_token_id is not None:
+            self.mask_token_id = tokenizer.mask_token_id
+        elif hasattr(tokenizer, "unk_token_id") and tokenizer.unk_token_id is not None:
+             self.mask_token_id = tokenizer.unk_token_id
+        elif hasattr(tokenizer, "pad_token_id") and tokenizer.pad_token_id is not None:
+            self.mask_token_id = tokenizer.pad_token_id
+        else:
+             # Fallback for some tokenizers
+             self.mask_token_id = tokenizer.eos_token_id
+             
+        # Ensure mask_token_id is valid
+        if self.mask_token_id is None:
+            raise ValueError("Tokenizer must have a valid mask_token_id, unk_token_id, or pad_token_id for diffusion.")
 
         self.validation_samples_table = wandb.Table(
             columns=["Epoch", "Step", "Temperature", "Sample 1", "Sample 2", "Sample 3"],

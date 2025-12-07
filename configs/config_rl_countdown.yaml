@@ -32,7 +32,7 @@ rl_module:
   beta: 0.001 # Lowered to match TinyZero (was 0.01)
   use_ref_model: true # Critical for stability
   generation_kwargs:
-    num_steps: 64
+    num_steps: 32
     temperature: 1.0
   elbo_samples: 1 # Reduce ELBO samples to 1 to save memory
   rl_method: spg
@@ -80,7 +80,7 @@ model:
   beta: 0.001
   use_ref_model: true
   generation_kwargs:
-    num_steps: 64
+    num_steps: 32
     temperature: 1.0
   elbo_samples: 1
 
