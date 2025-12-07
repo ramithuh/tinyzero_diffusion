@@ -2,17 +2,22 @@
 
 Currently utilizes lit_gpt variant for initializing a diffusion model.
 """
+import math
 import warnings
+from typing import List, Optional, Tuple, Union, Dict, Any, Callable
 
+import lightning as L
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import wandb
+
 from tzd.models.base import BaseModel
 from tzd.utils.generation import log_generations
 from tzd.models.llada.inference import generate as llada_sample
 from tzd.models.diffusion_rl import DiffusionRLMixin
 
-from litgpt.model import GPT
+from litgpt.model import GPT, Block, Config as GPTConfig
 from litgpt.config import Config as LitGPTConfig
 
 
@@ -33,24 +38,23 @@ class DiffusionModel(BaseModel, DiffusionRLMixin):
         n_embd: int,
         block_size: int,
         tokenizer: callable,
-        bias: bool = True,
-        model_type: str = "litgpt",  # 'smdm' or 'litgpt'
+        bias: bool = False,
+        model_type: str = "gpt2",
+        litgpt_config: Optional[LitGPTConfig] = None,
+        gpt_model: Optional[nn.Module] = None,
         **kwargs
     ):
-        """
-        Initialize the diffusion model.
-        """
-        super().__init__(model_alias=model_alias, lr=lr)
+        super().__init__()
+        self.save_hyperparameters(ignore=["tokenizer", "gpt_model"]) # Ignore non-serializable args
 
-        self.tokenizer = tokenizer
+        self.model_alias = model_alias
+        self.lr = lr
+        self.n_layer = n_layer
+        self.n_head = n_head
+        self.n_embd = n_embd
         self.block_size = block_size
-        self.vocab_size = tokenizer.vocab_size
+        self.tokenizer = tokenizer
         self.model_type = model_type
-        self.mask_token_id = tokenizer.mask_token_id
-
-        # inference parameters
-        self.val_generation_freq   = kwargs.get("val_generation_freq", 5)
-        print(f"DEBUG: DiffusionModel initialized with val_generation_freq={self.val_generation_freq}")
         self.generation_block_size = kwargs.get("generation_block_size", block_size)
         self.val_temperatures       = kwargs.get("val_temperatures", [1.0])
         self.generation_num_steps  = kwargs.get("generation_num_steps", block_size // 2)
@@ -64,7 +68,9 @@ class DiffusionModel(BaseModel, DiffusionRLMixin):
         )
 
         # Initialize model based on model_type
-        if model_type == "smdm":
+        if gpt_model is not None:
+            self.model = gpt_model
+        elif model_type == "smdm":
             # Original SMDM path
             from tzd.models.smdm.diffmodel import TransEncoder
             from tzd.models.smdm.config import Config
