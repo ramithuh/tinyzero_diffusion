@@ -14,29 +14,29 @@ from torch.utils.data import Dataset
 
 class CountdownDataset(Dataset):
     """
-    Dataset for the Countdown task following SPG's format.
-    
+    Dataset for the Countdown task following TinyZero's Qwen template format.
+
     Task: Given a target number and a list of numbers, create an arithmetic expression
     that uses each number exactly once to reach the target.
-    
-    Format:
-        Prompt: System instructions + "Numbers: [a, b, c]\nTarget: X"
-        Expected output: <reasoning>...</reasoning>\n<answer>\\boxed{expression}</answer>
+
+    Format (TinyZero Qwen template):
+        Prompt: Qwen chat format with <|im_start|> tags
+        Expected output: <think>reasoning...</think>\n<answer> expression </answer>
     """
     
+    # Use TinyZero's Qwen template format for better comparison
+    # This matches: TinyZero/examples/data_preprocess/countdown.py line 65
     SYSTEM_PROMPT = (
-        "Using only the provided numbers, create an arithmetic expression that evaluates to exactly "
-        "the provided target number. You may use the operations +, -, *, and / as needed, but each "
-        "number must be used exactly once. Think step-by-step. After reasoning, provide only your "
-        "final expression inside \\boxed{} tags without including an equals sign or the target number. "
-        "For example: \\boxed{a + b * c}\n"
-        "Respond in the following format:\n"
-        "<reasoning>\n"
-        "Your reasoning here\n"
-        "</reasoning>\n"
-        "<answer>\n"
-        "\\boxed{...}\n"
-        "</answer>"
+        "<|im_start|>system\n"
+        "You are a helpful assistant. You first thinks about the reasoning process in the mind and then provides the user with the answer.<|im_end|>\n"
+        "<|im_start|>user\n"
+        "Using the numbers {numbers}, create an equation that equals {target}. "
+        "You can use basic arithmetic operations (+, -, *, /) and each number can only be used once. "
+        "Show your work in <think> </think> tags. And return the final answer in <answer> </answer> tags, "
+        "for example <answer> (1 + 2) / 3 </answer>.<|im_end|>\n"
+        "<|im_start|>assistant\n"
+        "Let me solve this step by step.\n"
+        "<think>"
     )
     
     def __init__(
@@ -79,18 +79,14 @@ class CountdownDataset(Dataset):
     
     def _format_prompt(self, numbers: List[int], target: int) -> str:
         """
-        Format the countdown prompt following SPG's template.
+        Format the countdown prompt following TinyZero's Qwen template.
         """
-        # Create the question
-        question = f"Numbers: {numbers}\nTarget: {target}"
-        
-        # Combine system prompt and question
-        full_prompt = f"{self.SYSTEM_PROMPT}\n\n{question}"
-        
-        # Optionally prefill <reasoning> tag to encourage structured output
-        if self.add_reasoning_tag:
-            full_prompt += "\n<reasoning>"
-        
+        # TinyZero's template already includes the question format, just fill in numbers and target
+        full_prompt = self.SYSTEM_PROMPT.format(numbers=numbers, target=target)
+
+        # TinyZero already pre-fills <think> tag in the template
+        # No need for add_reasoning_tag option
+
         return full_prompt
     
     def __len__(self) -> int:
@@ -98,12 +94,12 @@ class CountdownDataset(Dataset):
         return len(self.examples)
 
     def _format_completion(self, reasoning: str, solution: str) -> str:
-        """Format the completion (reasoning + answer)."""
-        # If prompt already has <reasoning>, we start with the content
-        # reasoning should be the content inside tags
-        # solution should be the content inside \boxed{}
-        
-        return f"\n{reasoning}\n</reasoning>\n<answer>\n\\boxed{{{solution}}}\n</answer>"
+        """Format the completion following TinyZero's format with <think> and <answer> tags."""
+        # TinyZero uses <think> instead of <reasoning>
+        # Answer is just the expression, no \boxed{}
+        # Prompt already pre-fills <think>, so we just add the content
+
+        return f"\n{reasoning}\n</think>\n<answer> {solution} </answer>"
 
     def __getitem__(self, idx: int) -> Dict:
         """

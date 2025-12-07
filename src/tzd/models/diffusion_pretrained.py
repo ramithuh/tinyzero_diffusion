@@ -140,6 +140,12 @@ def from_pretrained(
     # Create DiffusionModel with LitGPT architecture
     # We pass the full litgpt_config in kwargs, which contains all architecture details
     # The individual parameters are needed to satisfy DiffusionModel's __init__ signature
+    
+    # Filter out kwargs that we're already passing explicitly to avoid "multiple values" errors
+    explicit_params = {'model_alias', 'lr', 'n_layer', 'n_head', 'n_embd', 'block_size', 
+                       'tokenizer', 'bias', 'model_type', 'litgpt_config'}
+    filtered_kwargs = {k: v for k, v in kwargs.items() if k not in explicit_params}
+    
     model = DiffusionModel(
         model_alias=model_alias,
         lr=lr,
@@ -151,6 +157,7 @@ def from_pretrained(
         bias=litgpt_config.bias,
         model_type="litgpt",
         litgpt_config=litgpt_config,  # This is what actually gets used for the GPT model
+        **filtered_kwargs
     )
 
     # Load pretrained weights if checkpoint directory provided

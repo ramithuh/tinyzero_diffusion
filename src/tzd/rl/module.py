@@ -131,9 +131,13 @@ class RLDiffusionModule(L.LightningModule):
         self.model.train()
         
         # 3. Compute Rewards
+        # Decode only the completion to avoid parsing tags from the prompt!
+        prompt_len = prompt_ids.shape[1]
+        completion_ids = samples[:, prompt_len:]
+        
         decoded_samples = [
             tokenizer.decode(s, skip_special_tokens=True) 
-            for s in samples
+            for s in completion_ids
         ]
         
         rewards = countdown_reward_batch(decoded_samples, repeated_targets, repeated_numbers)
@@ -141,20 +145,12 @@ class RLDiffusionModule(L.LightningModule):
         
         # Log metrics
         metrics = compute_reward_metrics(decoded_samples, repeated_targets, repeated_numbers)
-        self.log_dict({f"train/{k}": v for k, v in metrics.items()}, prog_bar=True)
+        self.log_dict({f"train/{k}": v for k, v in metrics.items()}, prog_bar=True, on_step=True, on_epoch=True)
         
         # 4. Compute Advantages (Group-Relative)
-        # Reshape to (batch_size, num_generations)
-        rewards_reshaped = rewards_tensor.view(batch_size, self.num_generations)
-        
-        # Baseline = Mean within group
-        baseline = rewards_reshaped.mean(dim=1, keepdim=True)
-        
-        # Advantage = Reward - Baseline (NO Z-score normalization!)
-        advantages = rewards_reshaped - baseline
-        advantages = advantages.view(-1) # Flatten
-        
-        self.log("train/advantage_mean", advantages.mean())
+        advantages = self.compute_advantages(rewards_tensor, batch_size, self.num_generations)
+
+        self.log("train/advantage_mean", advantages.mean(), on_step=True, on_epoch=True)
 
         # 5. Compute Policy Loss (ELBO)
         # We compute ELBO of the *generated samples*
@@ -187,17 +183,40 @@ class RLDiffusionModule(L.LightningModule):
             
             kld = elbo - ref_elbo
             kl_loss = self.beta * kld.mean()
-            self.log("train/kl_divergence", kld.mean())
+            self.log("train/kl_divergence", kld.mean(), on_step=True, on_epoch=True)
             
         # Total Loss
         # We detach advantages to treat them as weights
         policy_loss = -(advantages.detach() * elbo).mean()
         total_loss = policy_loss + kl_loss
         
-        self.log("train/policy_loss", policy_loss)
-        self.log("train/total_loss", total_loss)
+        self.log("train/policy_loss", policy_loss, on_step=True, on_epoch=True)
+        self.log("train/total_loss", total_loss, on_step=True, on_epoch=True)
         
         return total_loss
+
+    @staticmethod
+    def compute_advantages(rewards: torch.Tensor, batch_size: int, num_generations: int) -> torch.Tensor:
+        """
+        Compute group-relative advantages.
+
+        Args:
+            rewards: Tensor of shape (batch_size * num_generations,)
+            batch_size: Number of unique prompts
+            num_generations: Number of generations per prompt
+
+        Returns:
+            advantages: Tensor of shape (batch_size * num_generations,)
+        """
+        # Reshape to (batch_size, num_generations)
+        rewards_reshaped = rewards.view(batch_size, num_generations)
+
+        # Baseline = Mean within group
+        baseline = rewards_reshaped.mean(dim=1, keepdim=True)
+
+        # Advantage = Reward - Baseline (NO Z-score normalization!)
+        advantages = rewards_reshaped - baseline
+        return advantages.view(-1)  # Flatten
 
     def configure_optimizers(self):
         """Configure optimizer."""
@@ -228,20 +247,20 @@ class RLDiffusionModule(L.LightningModule):
         prompts_text = batch["prompts"]
         targets = batch["targets"]
         numbers = batch["numbers"]
-        
+
         # 2. Rollout (Generation) - Just 1 generation per prompt for validation to save time?
         # Or use same num_generations to be consistent. Let's use 1 for speed, or num_generations.
         # Let's use num_generations to get better estimate of policy performance.
-        
+
         repeated_prompts_text = []
         repeated_targets = []
         repeated_numbers = []
-        
+
         for i in range(len(prompts_text)):
             repeated_prompts_text.extend([prompts_text[i]] * self.num_generations)
             repeated_targets.extend([targets[i]] * self.num_generations)
             repeated_numbers.extend([numbers[i]] * self.num_generations)
-            
+
         tokenizer = self.model.tokenizer
         encoded_prompts = tokenizer(
             repeated_prompts_text,
@@ -249,9 +268,9 @@ class RLDiffusionModule(L.LightningModule):
             return_tensors="pt",
             add_special_tokens=False
         ).to(self.device)
-        
+
         prompt_ids = encoded_prompts.input_ids
-        
+
         self.model.eval()
         with torch.no_grad():
             samples = self.model.sample(
@@ -261,15 +280,49 @@ class RLDiffusionModule(L.LightningModule):
                 num_steps=self.gen_cfg["num_steps"],
                 temperature=self.gen_cfg["temperature"]
             )
-            
+
         # 3. Compute Rewards
+        # Decode only the completion
+        prompt_len = prompt_ids.shape[1]
+        completion_ids = samples[:, prompt_len:]
+        
         decoded_samples = [
             tokenizer.decode(s, skip_special_tokens=True) 
-            for s in samples
+            for s in completion_ids
         ]
-        
+
         # Log metrics
         metrics = compute_reward_metrics(decoded_samples, repeated_targets, repeated_numbers)
         self.log_dict({f"val/{k}": v for k, v in metrics.items()}, prog_bar=True)
-        
+
+        # 4. Log sample generations (3 to WandB, 1 to console)
+        # Only log on first batch to avoid too much logging
+        if batch_idx == 0:
+            # Print 1 example to console (matching TinyZero behavior)
+            print(f"\n{'='*80}")
+            print(f"Validation Sample (Step {self.trainer.global_step}):")
+            print(f"Prompt: {repeated_prompts_text[0]}")
+            print(f"Generated: {decoded_samples[0]}")
+            print(f"Target: {repeated_targets[0]}")
+            print(f"{'='*80}\n")
+
+            # Log 3 examples to WandB table
+            if self.logger:
+                import wandb
+                table_data = []
+                for i in range(min(3, len(decoded_samples))):
+                    table_data.append([
+                        self.trainer.global_step,
+                        repeated_prompts_text[i],
+                        decoded_samples[i],
+                        repeated_targets[i],
+                        repeated_numbers[i]
+                    ])
+
+                table = wandb.Table(
+                    columns=["step", "prompt", "generated", "target", "numbers"],
+                    data=table_data
+                )
+                self.logger.experiment.log({f"val/samples": table})
+
         return metrics
