@@ -63,6 +63,7 @@ model:
   rl_method: grpo
   clip_eps: 0.2
   elbo_samples: 1
+  compile_model: true
   
   generation_kwargs:
     num_steps: null  # Ignored by AR model
