@@ -266,3 +266,130 @@ if __name__ == "__main__":
         test_multiple_answer_tags()
     except AssertionError as e:
         print(f"Multiple tags test failed: {e}")
+
+def test_answer_inside_think():
+    """
+    Verify behavior when <answer> is inside <think> and not at the end.
+    """
+    full_text = """<|im_start|>system
+You are a helpful assistant. You first thinks about the reasoning process in the mind and then provides the user with the answer.<|im_end|>
+<|im_start|>user
+Using the numbers [79, 17, 60], create an equation that equals 36. You can use basic arithmetic operations (+, -, *, /) and each number can only be used once. Show your work in <think> </think> tags. And return the final answer in <answer> </answer> tags, for example <answer> (1 + 2) / 3 </answer>.<|im_end|>
+<|im_start|>assistant
+Let me solve this step by step.
+<think>Using only basic arithmetic operations (only +, -, and /) and only using the numbers 79, 17, and 60:
+<answer>17 - 60 + 79 </answer>
+Therefore, the equation using only basic arithmetic operations in only two uses and using only numbers from 17, 60, and 79 that can't be rearranged or doubled, is:
+17 - 60 + 79 = 36
+This equation uses only basic arithmetic operations and only twice."""
+
+    # 1. Extract
+    extracted = extract_countdown_answer(full_text)
+    print(f"\nInside think extracted: {extracted}")
+    
+    # STRICT PARSING UPDATE:
+    # Should be None because answer is not on the last line
+    assert extracted is None
+    
+    # 2. Score
+    # Target: 36, Numbers: [79, 17, 60]
+    # 17 - 60 + 79 = 36
+    score = compute_countdown_score(full_text, 36, [79, 17, 60])
+    print(f"Inside think score: {score}")
+    
+    # STRICT PARSING UPDATE:
+    # Since the answer is NOT on the last line, it should now fail extraction.
+    # Expected score: 0.0
+    assert score == 0.0
+    print("Answer inside think test passed (confirmed it fails under strict parsing)!")
+
+if __name__ == "__main__":
+    # Run tests manually
+    try:
+        test_user_example_alignment()
+        print("User example test passed!")
+    except AssertionError as e:
+        print(f"User example test failed: {e}")
+        
+    try:
+        test_lowercase_assistant_handling()
+        print("Lowercase assistant test passed!")
+    except AssertionError as e:
+        print(f"Lowercase assistant test failed: {e}")
+
+    try:
+        test_missing_tags_in_completion()
+    except AssertionError as e:
+        print(f"Missing tags test failed: {e}")
+
+    try:
+        test_multiple_answer_tags()
+    except AssertionError as e:
+        print(f"Multiple tags test failed: {e}")
+
+    try:
+        test_answer_inside_think()
+    except AssertionError as e:
+        print(f"Answer inside think test failed: {e}")
+
+def test_tinyzero_answer_inside_think():
+    """
+    Verify TinyZero's behavior when <answer> is inside <think>.
+    """
+    full_text = """<|im_start|>system
+You are a helpful assistant. You first thinks about the reasoning process in the mind and then provides the user with the answer.<|im_end|>
+<|im_start|>user
+Using the numbers [79, 17, 60], create an equation that equals 36. You can use basic arithmetic operations (+, -, *, /) and each number can only be used once. Show your work in <think> </think> tags. And return the final answer in <answer> </answer> tags, for example <answer> (1 + 2) / 3 </answer>.<|im_end|>
+<|im_start|>assistant
+Let me solve this step by step.
+<think>Using only basic arithmetic operations (only +, -, and /) and only using the numbers 79, 17, and 60:
+<answer>17 - 60 + 79 </answer>
+Therefore, the equation using only basic arithmetic operations in only two uses and using only numbers from 17, 60, and 79 that can't be rearranged or doubled, is:
+17 - 60 + 79 = 36
+This equation uses only basic arithmetic operations and only twice."""
+
+    # Run TinyZero Logic
+    ground_truth = {'target': 36, 'numbers': [79, 17, 60]}
+    tiny_score = tinyzero_compute_score(full_text, ground_truth)
+    
+    print(f"\nTinyZero Inside Think Score: {tiny_score}")
+    
+    # TinyZero logic takes the last line: "This equation uses only basic arithmetic operations and only twice."
+    # This line has no answer tag.
+    # So it should return 0.
+    assert tiny_score == 0.0
+    print("TinyZero answer inside think test passed (confirmed it fails)!")
+
+if __name__ == "__main__":
+    # Run tests manually
+    try:
+        test_user_example_alignment()
+        print("User example test passed!")
+    except AssertionError as e:
+        print(f"User example test failed: {e}")
+        
+    try:
+        test_lowercase_assistant_handling()
+        print("Lowercase assistant test passed!")
+    except AssertionError as e:
+        print(f"Lowercase assistant test failed: {e}")
+
+    try:
+        test_missing_tags_in_completion()
+    except AssertionError as e:
+        print(f"Missing tags test failed: {e}")
+
+    try:
+        test_multiple_answer_tags()
+    except AssertionError as e:
+        print(f"Multiple tags test failed: {e}")
+
+    try:
+        test_answer_inside_think()
+    except AssertionError as e:
+        print(f"Answer inside think test failed: {e}")
+
+    try:
+        test_tinyzero_answer_inside_think()
+    except AssertionError as e:
+        print(f"TinyZero comparison test failed: {e}")
