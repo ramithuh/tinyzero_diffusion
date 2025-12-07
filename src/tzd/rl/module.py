@@ -40,12 +40,19 @@ class RLModule(L.LightningModule):
         elbo_samples: int = 1, # Number of MC samples for ELBO (Diffusion only)
         rl_method: str = "grpo", # 'grpo' or 'spg'
         clip_eps: float = 0.2, # PPO clipping epsilon
+        compile_model: bool = False, # Whether to use torch.compile
     ):
         super().__init__()
         self.save_hyperparameters(ignore=["model", "train_dataset"])
         
         self.model = model
         self.train_dataset = train_dataset
+
+        if compile_model:
+            print("Compiling model with torch.compile...")
+            # Compile the inner neural network (LitGPT or TransEncoder)
+            # This ensures both forward() and compute_elbo() use the compiled model
+            self.model.model = torch.compile(self.model.model)
         
         # Reference model for KL penalty (Critical for stability)
         self.ref_model = None
@@ -145,13 +152,21 @@ class RLModule(L.LightningModule):
                     return_per_token=True
                 )
             else:
-                # Diffusion still uses single-scalar ELBO for now
-                old_log_probs = self.model.compute_elbo(
-                    samples,
-                    num_samples=self.elbo_samples,
-                    eps=1e-3,
-                    prompt_len=prompt_len
-                )
+                # SPG: Use blockwise (Sandwich) estimator if available, else random masking
+                if hasattr(self.model, "compute_elbo_blockwise"):
+                    old_log_probs = self.model.compute_elbo_blockwise(
+                        samples,
+                        num_samples=self.elbo_samples,
+                        eps=1e-3,
+                        prompt_len=prompt_len
+                    )
+                else:
+                    old_log_probs = self.model.compute_elbo(
+                        samples,
+                        num_samples=self.elbo_samples,
+                        eps=1e-3,
+                        prompt_len=prompt_len
+                    )
             
         self.model.train()
         
@@ -181,12 +196,20 @@ class RLModule(L.LightningModule):
                 return_per_token=True
             )
         else:
-            new_log_probs = self.model.compute_elbo(
-                samples,
-                num_samples=self.elbo_samples,
-                eps=1e-3,
-                prompt_len=prompt_len
-            )
+            if hasattr(self.model, "compute_elbo_blockwise"):
+                new_log_probs = self.model.compute_elbo_blockwise(
+                    samples,
+                    num_samples=self.elbo_samples,
+                    eps=1e-3,
+                    prompt_len=prompt_len
+                )
+            else:
+                new_log_probs = self.model.compute_elbo(
+                    samples,
+                    num_samples=self.elbo_samples,
+                    eps=1e-3,
+                    prompt_len=prompt_len
+                )
         
         # 6. KL Penalty
         kl_loss = torch.tensor(0.0, device=self.device)
@@ -199,11 +222,19 @@ class RLModule(L.LightningModule):
                         return_per_token=True
                     )
                 else:
-                    ref_log_probs = self.ref_model.compute_elbo(
-                        samples,
-                        num_samples=self.elbo_samples,
-                        prompt_len=prompt_len
-                    )
+                    # Use same estimator for ref model
+                    if hasattr(self.ref_model, "compute_elbo_blockwise"):
+                        ref_log_probs = self.ref_model.compute_elbo_blockwise(
+                            samples,
+                            num_samples=self.elbo_samples,
+                            prompt_len=prompt_len
+                        )
+                    else:
+                        ref_log_probs = self.ref_model.compute_elbo(
+                            samples,
+                            num_samples=self.elbo_samples,
+                            prompt_len=prompt_len
+                        )
             
             # PPO KL: Per-token difference
             kld = new_log_probs - ref_log_probs # Shape: [B, Seq]

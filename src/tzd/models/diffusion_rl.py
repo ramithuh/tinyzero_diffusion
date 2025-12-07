@@ -11,7 +11,8 @@ class DiffusionRLMixin:
         x: torch.Tensor,
         num_samples: int = 10,
         eps: float = 1e-3,
-        prompt_len: int = 0
+        prompt_len: int = 0,
+        return_per_token: bool = False
     ) -> torch.Tensor:
         """
         Compute ELBO (lower bound) for sequence x.
@@ -23,9 +24,10 @@ class DiffusionRLMixin:
             num_samples: Number of Monte Carlo samples (K)
             eps: Minimum masking probability
             prompt_len: Length of prompt tokens to exclude from loss (default: 0, meaning use full sequence)
+            return_per_token: If True, returns [batch_size, completion_len] log probs.
 
         Returns:
-            ELBO estimate (batch_size,) computed ONLY on completion tokens
+            ELBO estimate (batch_size,) or (batch_size, completion_len) computed ONLY on completion tokens
         """
         if not hasattr(self, 'mask_token_id'):
             raise AttributeError("DiffusionRLMixin requires mask_token_id attribute")
@@ -81,15 +83,17 @@ class DiffusionRLMixin:
             # If prompt_len > 0, we only compute loss on tokens after the prompt
             if prompt_len > 0:
                 completion_logprobs = masked_logprobs[:, prompt_len:]  # (batch_size, completion_len)
-                seq_logprob = completion_logprobs.sum(dim=1)  # (batch_size,)
             else:
-                # Full sequence (for backward compatibility if prompt_len not provided)
-                seq_logprob = masked_logprobs.sum(dim=1)  # (batch_size,)
+                completion_logprobs = masked_logprobs # (batch_size, seq_len)
 
-            logprobs_list.append(seq_logprob)
+            if return_per_token:
+                logprobs_list.append(completion_logprobs)
+            else:
+                seq_logprob = completion_logprobs.sum(dim=1)  # (batch_size,)
+                logprobs_list.append(seq_logprob)
 
         # Average over samples
-        elbo = torch.stack(logprobs_list).mean(dim=0)  # (batch_size,)
+        elbo = torch.stack(logprobs_list).mean(dim=0)  # (batch_size, ...)
 
         # Memory cleanup
         del logprobs_list
