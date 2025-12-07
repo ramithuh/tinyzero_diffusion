@@ -16,19 +16,21 @@ tokenizer:
   pretrained_model_name_or_path: "Qwen/Qwen2.5-0.5B-Instruct"
 
 data:
-  batch_size: 4
+  batch_size: 16
   num_workers: 1
   max_val_samples: 100
   max_test_samples: 100
 
 model:
   tokenizer: ${tokenizer}
+  block_size: 2048
+  generation_block_size: 2048
 
 training:
   save_dir: ${hydra:runtime.output_dir}/checkpoints
   epochs: 1000
   gradient_accumulation_steps: 3
-  val_generation_freq: 5
+  val_generation_freq: 1
 
 logger:
   _target_: lightning.pytorch.loggers.WandbLogger

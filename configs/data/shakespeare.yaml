@@ -4,7 +4,7 @@ data:
   data_dir: "data/shakespeare"
   batch_size: 64
   block_size: 128
-  num_workers: 4
+  num_workers: 1
   tokenizer: ~
 
 training:
