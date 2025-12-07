@@ -257,9 +257,9 @@ class TestGRPOAdvantage:
         """
         Test tinyzero_diffusion's simpler advantage computation.
         
-        Verifies RLDiffusionModule.compute_advantages matches manual calculation.
+        Verifies RLModule.compute_advantages matches manual calculation.
         """
-        from tzd.rl.module import RLDiffusionModule
+        from tzd.rl.module import RLModule
         
         # Simulate our implementation
         batch_size = 2
@@ -269,57 +269,48 @@ class TestGRPOAdvantage:
         rewards_tensor = torch.tensor([1.0, 0.1, 0.0, 0.1, 1.0, 1.0, 0.0, 0.0])
         
         # Call actual implementation
-        advantages = RLDiffusionModule.compute_advantages(rewards_tensor, batch_size, num_generations)
+        advantages = RLModule.compute_advantages(rewards_tensor, batch_size, num_generations)
         
         # Manual verification
-        # Group 0: [1.0, 0.1, 0.0, 0.1], mean=0.3 -> adv=[0.7, -0.2, -0.3, -0.2]
-        expected_baseline_0 = torch.tensor([1.0, 0.1, 0.0, 0.1]).mean()
-        expected_advantages_0 = torch.tensor([1.0, 0.1, 0.0, 0.1]) - expected_baseline_0
+        # Group 0: [1.0, 0.1, 0.0, 0.1], mean=0.3, std=0.469
+        # Adv = (reward - mean) / (std + 1e-8)
+        rewards_0 = torch.tensor([1.0, 0.1, 0.0, 0.1])
+        mean_0 = rewards_0.mean()
+        std_0 = rewards_0.std()
+        expected_advantages_0 = (rewards_0 - mean_0) / (std_0 + 1e-8)
         
         assert torch.allclose(advantages[0:4], expected_advantages_0, atol=1e-5), \
             f"Advantages mismatch for group 0"
             
-        # Group 1: [1.0, 1.0, 0.0, 0.0], mean=0.5 -> adv=[0.5, 0.5, -0.5, -0.5]
-        expected_baseline_1 = torch.tensor([1.0, 1.0, 0.0, 0.0]).mean()
-        expected_advantages_1 = torch.tensor([1.0, 1.0, 0.0, 0.0]) - expected_baseline_1
+        # Group 1: [1.0, 1.0, 0.0, 0.0], mean=0.5, std=0.577
+        rewards_1 = torch.tensor([1.0, 1.0, 0.0, 0.0])
+        mean_1 = rewards_1.mean()
+        std_1 = rewards_1.std()
+        expected_advantages_1 = (rewards_1 - mean_1) / (std_1 + 1e-8)
         
         assert torch.allclose(advantages[4:8], expected_advantages_1, atol=1e-5), \
             f"Advantages mismatch for group 1"
 
-    def test_difference_zscore_vs_baseline(self):
+    def test_zscore_normalization_match(self):
         """
-        Document the difference between TinyZero (z-score) and our implementation (baseline only).
-
-        TinyZero: A = (r - mean) / (std + eps)  <- Z-score normalization
-        Ours:     A = (r - mean)                <- Simple baseline subtraction
-
-        This is a known difference! TinyZero's z-score provides:
-        - Scale invariance (advantages have unit variance)
-        - Better for heterogeneous reward scales across prompts
-
-        Our simpler version:
-        - Easier to implement
-        - Works when rewards are already on same scale (0, 0.1, 1.0)
+        Verify that our implementation now matches TinyZero's Z-score normalization.
         """
+        from tzd.rl.module import RLModule
+        
         rewards = torch.tensor([1.0, 0.1, 0.0, 0.1])
+        batch_size = 1
+        num_generations = 4
+        
+        # Our implementation
+        our_advantages = RLModule.compute_advantages(rewards, batch_size, num_generations)
+        
+        # TinyZero Z-score logic
         mean = rewards.mean()
         std = rewards.std()
-
-        # Z-score (TinyZero)
-        zscore_advantages = (rewards - mean) / (std + 1e-6)
-
-        # Simple baseline (ours)
-        baseline_advantages = rewards - mean
-
-        # They should have same sign and relative ordering
-        assert torch.all(torch.sign(zscore_advantages) == torch.sign(baseline_advantages)), \
-            "Z-score and baseline advantages should have same sign"
-
-        # Print for documentation
-        print(f"\nAdvantage comparison (rewards={rewards.tolist()}):")
-        print(f"  Z-score (TinyZero): {zscore_advantages.tolist()}")
-        print(f"  Baseline (ours):    {baseline_advantages.tolist()}")
-        print(f"  Ratio (zscore/baseline): {(zscore_advantages / baseline_advantages).tolist()}")
+        tinyzero_advantages = (rewards - mean) / (std + 1e-8) # We use 1e-8, TinyZero uses 1e-6 or similar
+        
+        assert torch.allclose(our_advantages, tinyzero_advantages, atol=1e-6), \
+            "Our implementation should match Z-score normalization"
 
 
 # =============================================================================
@@ -763,8 +754,9 @@ class TestIntegration:
         # Group with varied rewards
         rewards = torch.tensor([1.0, 0.0, 0.5, 0.2])
         mean = rewards.mean()  # 0.425
+        std = rewards.std()
 
-        advantages = rewards - mean
+        advantages = (rewards - mean) / (std + 1e-8)
 
         # Highest reward should have highest advantage
         assert advantages[0] == advantages.max(), \

@@ -131,6 +131,7 @@ class AutoregressiveModel(BaseModel):
         prompt_len: int,
         num_samples: int = 1,
         eps: float = 1e-3,
+        return_per_token: bool = False,
         **kwargs
     ) -> torch.Tensor:
         """
@@ -142,9 +143,11 @@ class AutoregressiveModel(BaseModel):
             prompt_len: Length of the prompt (to mask out)
             num_samples: Number of MC samples (ignored for AR as it's deterministic)
             eps: Epsilon for numerical stability (ignored for AR)
+            return_per_token: If True, returns [batch_size, completion_len] log probs.
+                              If False, returns [batch_size] scalar log probs (summed).
             
         Returns:
-            Log probability of the completion [batch_size]
+            Log probability of the completion
         """
         # 1. Forward pass to get logits
         logits = self.model(samples)
@@ -162,18 +165,25 @@ class AutoregressiveModel(BaseModel):
         
         # 4. Masking
         # We only care about the completion, i.e., tokens from prompt_len onwards.
-        # Note: shift_labels[i] corresponds to samples[i+1].
-        # We want to score samples[prompt_len], samples[prompt_len+1], ...
-        # These correspond to indices prompt_len-1, prompt_len, ... in shift_labels.
-        mask = torch.zeros_like(target_log_probs, dtype=torch.bool)
-        mask[:, prompt_len-1:] = True
+        # shift_labels indices: 0 corresponds to sample[1].
+        # We want to match sample[prompt_len]. This is index prompt_len-1 in shift_labels.
         
-        # Also mask out padding tokens
+        # Extract only the completion part
+        # shift_labels length is seq_len - 1
+        # completion starts at prompt_len. 
+        # So we slice from prompt_len - 1 to end
+        
+        completion_log_probs = target_log_probs[:, prompt_len-1:]
+        
+        # Handle padding if present in completion
         if self.tokenizer.pad_token_id is not None:
-            is_pad = (shift_labels == self.tokenizer.pad_token_id)
-            mask = mask & (~is_pad)
+            # We need to mask out padding tokens in the completion
+            completion_labels = shift_labels[:, prompt_len-1:]
+            is_pad = (completion_labels == self.tokenizer.pad_token_id)
+            completion_log_probs = completion_log_probs * (~is_pad).float()
             
-        # 5. Sum log probs over the sequence
-        completion_log_prob = (target_log_probs * mask.float()).sum(dim=1)
-        
-        return completion_log_prob
+        if return_per_token:
+            return completion_log_probs
+            
+        # 5. Sum log probs over the sequence (Sequence-Level)
+        return completion_log_probs.sum(dim=1)

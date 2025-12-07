@@ -1,5 +1,8 @@
 """
-RL Training Module for Diffusion Models using GRPO.
+RL Training Module for Autoregressive and Diffusion Models.
+Supports:
+1. GRPO (Group Relative Policy Optimization) for AR models (TinyZero style).
+2. SPG (Sandwiched Policy Gradient) / Diffusion-GRPO for Diffusion models.
 """
 import copy
 from typing import Any, Dict, List, Optional, Tuple
@@ -10,33 +13,33 @@ import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
-from tzd.models.diffusion import DiffusionModel
+from tzd.models.base import BaseModel
 from tzd.rl.rewards import countdown_reward_batch
 from tzd.utils.reward_logging import compute_reward_metrics, log_reward_metrics
 from tzd.data.countdown import CountdownDataset
 
 
-class RLDiffusionModule(L.LightningModule):
+class RLModule(L.LightningModule):
     """
-    LightningModule for RL training of Diffusion Models using GRPO.
+    LightningModule for RL training of AR and Diffusion Models.
     
-    Implements:
-    1. Rollout: Generate samples from prompts
-    2. Reward: Score samples using task-specific reward function
-    3. Advantage: Compute group-relative advantages (GRPO)
-    4. Loss: Policy gradient using ELBO as log-likelihood + KL Penalty
+    Modes:
+    - 'grpo': For AR models. Uses exact log-likelihoods, PPO clipping, and advantage normalization.
+    - 'spg': For Diffusion models. Uses ELBO estimates, PPO clipping, and advantage normalization.
     """
 
     def __init__(
         self,
-        model: DiffusionModel,
+        model: BaseModel,
         lr: float = 1e-6,
         num_generations: int = 4,  # G in GRPO paper
         beta: float = 0.01,  # KL penalty coefficient
         use_ref_model: bool = True,
         generation_kwargs: Optional[Dict] = None,
         train_dataset: Optional[Any] = None, # Passed from config/hydra
-        elbo_samples: int = 1, # Number of MC samples for ELBO
+        elbo_samples: int = 1, # Number of MC samples for ELBO (Diffusion only)
+        rl_method: str = "grpo", # 'grpo' or 'spg'
+        clip_eps: float = 0.2, # PPO clipping epsilon
     ):
         super().__init__()
         self.save_hyperparameters(ignore=["model", "train_dataset"])
@@ -58,6 +61,8 @@ class RLDiffusionModule(L.LightningModule):
         self.num_generations = num_generations
         self.beta = beta
         self.elbo_samples = elbo_samples
+        self.rl_method = rl_method.lower()
+        self.clip_eps = clip_eps
         self.generation_kwargs = generation_kwargs or {}
         
         # Default generation settings
@@ -67,6 +72,8 @@ class RLDiffusionModule(L.LightningModule):
             "cfg_scale": 1.0,
         }
         self.gen_cfg.update(self.generation_kwargs)
+        
+        print(f"RL Module initialized with method: {self.rl_method}")
 
     @property
     def model_alias(self):
@@ -86,7 +93,7 @@ class RLDiffusionModule(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         """
-        GRPO Training Step.
+        RL Training Step (GRPO/SPG).
         """
         # 1. Unpack batch
         prompts_text = batch["prompts"]
@@ -116,6 +123,7 @@ class RLDiffusionModule(L.LightningModule):
         ).to(self.device)
         
         prompt_ids = encoded_prompts.input_ids
+        prompt_len = prompt_ids.shape[1]
         
         # Generate samples (No Gradients)
         self.model.eval()
@@ -128,13 +136,27 @@ class RLDiffusionModule(L.LightningModule):
                 temperature=self.gen_cfg["temperature"]
             )
             
+            # Compute OLD log probs / ELBO
+            # Return full sequence of per-token log probs
+            if self.rl_method == "grpo":
+                old_log_probs = self.model.compute_elbo(
+                    samples,
+                    prompt_len=prompt_len,
+                    return_per_token=True
+                )
+            else:
+                # Diffusion still uses single-scalar ELBO for now
+                old_log_probs = self.model.compute_elbo(
+                    samples,
+                    num_samples=self.elbo_samples,
+                    eps=1e-3,
+                    prompt_len=prompt_len
+                )
+            
         self.model.train()
         
         # 3. Compute Rewards
-        # Decode only the completion to avoid parsing tags from the prompt!
-        prompt_len = prompt_ids.shape[1]
         completion_ids = samples[:, prompt_len:]
-        
         decoded_samples = [
             tokenizer.decode(s, skip_special_tokens=True) 
             for s in completion_ids
@@ -143,51 +165,93 @@ class RLDiffusionModule(L.LightningModule):
         rewards = countdown_reward_batch(decoded_samples, repeated_targets, repeated_numbers)
         rewards_tensor = torch.tensor(rewards, device=self.device, dtype=torch.float32)
         
-        # Log metrics
         metrics = compute_reward_metrics(decoded_samples, repeated_targets, repeated_numbers)
         self.log_dict({f"train/{k}": v for k, v in metrics.items()}, prog_bar=True, on_step=True, on_epoch=True)
         
-        # 4. Compute Advantages (Group-Relative)
+        # 4. Compute Advantages
         advantages = self.compute_advantages(rewards_tensor, batch_size, self.num_generations)
-
         self.log("train/advantage_mean", advantages.mean(), on_step=True, on_epoch=True)
+        self.log("train/advantage_std", advantages.std(), on_step=True, on_epoch=True)
 
-        # 5. Compute Policy Loss (ELBO)
-        # We compute ELBO of the *generated samples*
-        # CRITICAL: samples contains PROMPT + COMPLETION, but we only optimize COMPLETION
-        prompt_len = prompt_ids.shape[1]  # Length of prompt tokens
-
-        elbo = self.model.compute_elbo(
-            samples,
-            num_samples=self.elbo_samples,
-            eps=1e-3,
-            prompt_len=prompt_len  # Only compute loss on completion tokens!
-        )
+        # 5. Compute Policy Loss (New Log Probs)
+        if self.rl_method == "grpo":
+             new_log_probs = self.model.compute_elbo(
+                samples,
+                prompt_len=prompt_len,
+                return_per_token=True
+            )
+        else:
+            new_log_probs = self.model.compute_elbo(
+                samples,
+                num_samples=self.elbo_samples,
+                eps=1e-3,
+                prompt_len=prompt_len
+            )
         
-        # 6. KL Penalty (Critical)
+        # 6. KL Penalty
         kl_loss = torch.tensor(0.0, device=self.device)
         if self.ref_model is not None and self.beta > 0:
             with torch.no_grad():
-                ref_elbo = self.ref_model.compute_elbo(
-                    samples,
-                    num_samples=self.elbo_samples,
-                    prompt_len=prompt_len  # Same prompt_len for reference model!
-                )
+                if self.rl_method == "grpo":
+                    ref_log_probs = self.ref_model.compute_elbo(
+                        samples, 
+                        prompt_len=prompt_len,
+                        return_per_token=True
+                    )
+                else:
+                    ref_log_probs = self.ref_model.compute_elbo(
+                        samples,
+                        num_samples=self.elbo_samples,
+                        prompt_len=prompt_len
+                    )
             
-            # KL approx = log_p - log_ref = elbo - ref_elbo
-            # We want to minimize KL, so we add beta * KL to loss
-            # Note: Since we maximize ELBO (log_p), we maximize (elbo - beta * KL)
-            # Or minimize -(elbo - beta * KL)
-            # Let's stick to loss minimization:
-            # Loss = - (Advantage * ELBO) + beta * KL
+            # PPO KL: Per-token difference
+            kld = new_log_probs - ref_log_probs # Shape: [B, Seq]
             
-            kld = elbo - ref_elbo
-            kl_loss = self.beta * kld.mean()
+            if self.rl_method == "grpo":
+                # Mask out padding/prompt is handled by compute_elbo returning 0 for prompt
+                # But we valid mask is needed for averaging
+                # For AR, compute_elbo should return valid log probs for completions
+                # Just take mean over valid tokens
+                # kld is [B, Completion_Len]
+                kl_loss = self.beta * kld.sum(dim=1).mean() # Sum over seq, mean over batch? No.
+                # TinyZero does: kld per token. masked_mean(kld).
+                # We will trust our compute_elbo to return aligned shapes
+                kl_loss = self.beta * kld.mean()
+            else:
+                 kl_loss = self.beta * kld.mean()
+
             self.log("train/kl_divergence", kld.mean(), on_step=True, on_epoch=True)
             
-        # Total Loss
-        # We detach advantages to treat them as weights
-        policy_loss = -(advantages.detach() * elbo).mean()
+        # 7. PPO Loss Calculation
+        if self.rl_method == "grpo": # Token-Level PPO (TinyZero Style)
+            # new_log_probs: [B, Completion_Len]
+            # old_log_probs: [B, Completion_Len]
+            # advantages: [B] -> Broadcast to [B, Completion_Len]
+            
+            ratio = torch.exp(new_log_probs - old_log_probs)
+            
+            # Broadcast advantage [B] -> [B, 1]
+            adv_expanded = advantages.view(-1, 1).expand_as(ratio)
+            adv_detached = adv_expanded.detach()
+            
+            surr1 = ratio * adv_detached
+            surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * adv_detached
+            
+            # Per-token min
+            clipped_loss = torch.min(surr1, surr2)
+            
+            # Masking is implicit if log_probs are only returned for completion
+            # Assuming compute_elbo returns only completion part or handles masking
+            policy_loss = -clipped_loss.mean()
+            
+        else: # Sequence-Level PPO (Diffusion)
+            ratio = torch.exp(new_log_probs - old_log_probs)
+            adv_detached = advantages.detach()
+            surr1 = ratio * adv_detached
+            surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * adv_detached
+            policy_loss = -torch.min(surr1, surr2).mean()
+        
         total_loss = policy_loss + kl_loss
         
         self.log("train/policy_loss", policy_loss, on_step=True, on_epoch=True)
@@ -198,7 +262,7 @@ class RLDiffusionModule(L.LightningModule):
     @staticmethod
     def compute_advantages(rewards: torch.Tensor, batch_size: int, num_generations: int) -> torch.Tensor:
         """
-        Compute group-relative advantages.
+        Compute group-relative advantages with Z-score normalization.
 
         Args:
             rewards: Tensor of shape (batch_size * num_generations,)
@@ -213,9 +277,14 @@ class RLDiffusionModule(L.LightningModule):
 
         # Baseline = Mean within group
         baseline = rewards_reshaped.mean(dim=1, keepdim=True)
-
-        # Advantage = Reward - Baseline (NO Z-score normalization!)
-        advantages = rewards_reshaped - baseline
+        
+        # Standard Deviation within group
+        std = rewards_reshaped.std(dim=1, keepdim=True)
+        
+        # Advantage = (Reward - Baseline) / (Std + eps)
+        # Add small epsilon to avoid division by zero
+        advantages = (rewards_reshaped - baseline) / (std + 1e-8)
+        
         return advantages.view(-1)  # Flatten
 
     def configure_optimizers(self):
@@ -248,10 +317,7 @@ class RLDiffusionModule(L.LightningModule):
         targets = batch["targets"]
         numbers = batch["numbers"]
 
-        # 2. Rollout (Generation) - Just 1 generation per prompt for validation to save time?
-        # Or use same num_generations to be consistent. Let's use 1 for speed, or num_generations.
-        # Let's use num_generations to get better estimate of policy performance.
-
+        # 2. Rollout (Generation)
         repeated_prompts_text = []
         repeated_targets = []
         repeated_numbers = []
