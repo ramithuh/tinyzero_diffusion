@@ -42,15 +42,15 @@ model:
     model_alias: "llada-8b-diffusion"
     model_type: "huggingface" # <--- New flag to use HF Adapter
     lr: 3e-6 
-    block_size: 1024 # LLaDA supports longer context if needed
-    generation_block_size: 1024
-    block_length: 32 # Critical for LLaDA quality
+    block_size: 512
+    generation_block_size: 512
+    block_length: 512 # User requested simplified generation
     # Quantization limits memory usage for 8B model
     quantize: "bnb.nf4"
     max_memory: {0: "40GiB"}
     gradient_checkpointing: false
-    lora_r: 64 # Enable LoRA for QLoRA training
-    lora_alpha: 16
+    lora_r: 128 # Match SPG config
+    lora_alpha: 64 # Match SPG config (alpha = r/2)
     lora_dropout: 0.05
     lora_query: true
     lora_key: true
@@ -60,12 +60,12 @@ model:
     lora_head: false 
   
   lr: 3e-6
-  num_generations: 1
+  num_generations: 4 
   beta: 0.001
   use_ref_model: true
   rl_method: spg 
   generation_kwargs:
-    num_steps: 64
+    num_steps: 32 # Reduced steps
     temperature: 1.0
   elbo_samples: 1
 
