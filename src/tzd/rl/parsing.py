@@ -26,16 +26,13 @@ def extract_countdown_answer(solution_str: str) -> str | None:
     elif "Assistant:" in solution_str:
         solution_str = solution_str.split("Assistant:")[-1]
 
-    # Strict parsing (TinyZero style): Only look for answer in the last line
-    # This forces the model to output the answer at the very end.
-    lines = solution_str.strip().split('\n')
-    last_line = lines[-1] if lines else ""
-
+    # Robust parsing: Find the last <answer> block in the text
+    # DOTALL allows . to match newlines
     answer_pattern = r"<answer>(.*?)</answer>"
-    matches = re.findall(answer_pattern, last_line)
+    matches = re.findall(answer_pattern, solution_str, re.DOTALL)
 
     if matches:
-        # Return last match
+        # Return last match found
         answer = matches[-1].strip()
         # Strip \boxed{...} if present
         if answer.startswith(r"\boxed{") and answer.endswith("}"):

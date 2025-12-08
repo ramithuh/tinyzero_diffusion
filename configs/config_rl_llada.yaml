@@ -1,0 +1,85 @@
+# @package _global_
+
+defaults:
+  - tokenizer: qwen2.5
+  - training: default
+  - data: countdown
+  - _self_
+
+# Override defaults here
+experiment_suffix: llada-8b-instruct-rl-grpo
+
+seed: 42
+
+tokenizer:
+  pretrained_model_name_or_path: "GSAI-ML/LLaDA-8B-Instruct"
+
+data:
+  batch_size: 1  # 8B model needs small batch
+  train_file: "countdown_hf_train.jsonl"
+  val_file: "countdown_hf_val.jsonl"
+  test_file: "countdown_cd3_test.jsonl" 
+  num_workers: 0 
+  max_val_samples: 3
+  max_test_samples: 100
+
+training:
+  save_dir: ${hydra:runtime.output_dir}/checkpoints
+  epochs: 10
+  gradient_accumulation_steps: 4 # Accumulate to effective batch size of 4-8
+  val_check_interval: 10
+  precision: "bf16-mixed"
+  log_every_n_steps: 1
+
+# RL Module Configuration
+model:
+  _target_: tzd.rl.module.RLModule
+  model:
+    _target_: tzd.models.diffusion_pretrained.from_pretrained
+    pretrained_model_name: "GSAI-ML/LLaDA-8B-Instruct"
+    checkpoint_dir: null # Load directly from HF using the pretrained_model_name
+    tokenizer: ${tokenizer}
+    model_alias: "llada-8b-diffusion"
+    model_type: "huggingface" # <--- New flag to use HF Adapter
+    lr: 3e-6 
+    block_size: 1024 # LLaDA supports longer context if needed
+    generation_block_size: 1024
+    block_length: 32 # Critical for LLaDA quality
+    # Quantization limits memory usage for 8B model
+    quantize: "bnb.nf4"
+    max_memory: {0: "40GiB"}
+    gradient_checkpointing: false
+    lora_r: 64 # Enable LoRA for QLoRA training
+    lora_alpha: 16
+    lora_dropout: 0.05
+    lora_query: true
+    lora_key: true
+    lora_value: true
+    lora_projection: true
+    lora_mlp: true
+    lora_head: false 
+  
+  lr: 3e-6
+  num_generations: 1
+  beta: 0.001
+  use_ref_model: true
+  rl_method: spg 
+  generation_kwargs:
+    num_steps: 64
+    temperature: 1.0
+  elbo_samples: 1
+
+logger:
+  _target_: lightning.pytorch.loggers.WandbLogger
+  project: diffusion_countdown
+  name: llada_rl_grpo_baseline
+
+callbacks:
+  model_checkpoint:
+    _target_: lightning.pytorch.callbacks.ModelCheckpoint
+    monitor: "val/reward_mean"
+    mode: "max"
+    save_top_k: 3
+    save_last: true
+    filename: "epoch={epoch}-step={step}-reward={val/reward_mean:.2f}"
+    auto_insert_metric_name: false

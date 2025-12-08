@@ -84,7 +84,10 @@ class CountdownDataset(Dataset):
             return self.QWEN_INSTRUCT_TEMPLATE
             
         model_name_lower = model_name.lower()
-        if "instruct" in model_name_lower:
+        if "llada" in model_name_lower:
+            print(f"Using LLaDA template (Dynamic apply_chat_template) for model: {model_name}")
+            return "LLADA_DYNAMIC"
+        elif "instruct" in model_name_lower:
             print(f"Using Qwen Instruct template for model: {model_name}")
             return self.QWEN_INSTRUCT_TEMPLATE
         else:
@@ -112,7 +115,31 @@ class CountdownDataset(Dataset):
         """
         Format the countdown prompt.
         """
-        # Format using the selected template
+        # Special handling for LLaDA using apply_chat_template key
+        if self.template == "LLADA_DYNAMIC" and self.tokenizer is not None:
+             # LLaDA strict system prompt
+            SYSTEM_PROMPT = (
+                "Respond in the following format:\n"
+                "<reasoning>\n"
+                "...\n"
+                "</reasoning>\n"
+                "<answer>\n"
+                "...\n"
+                "</answer>\n"
+            )
+            user_content = (
+                f"{SYSTEM_PROMPT}\n"
+                f"Using only the numbers {numbers}, create an arithmetic expression that evaluates to exactly {target}. "
+                "You must use all numbers from the list, and each number must be used exactly once. "
+                "You may use the operations +, -, *, and / as needed."
+            )
+            
+            messages = [{"role": "user", "content": user_content}]
+            # Use apply_chat_template to get the full formatted string
+            # add_generation_prompt=True to add the assistant start token
+            return self.tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+
+        # Fallback/Standard formatting
         full_prompt = self.template.format(numbers=numbers, target=target)
         return full_prompt
 

@@ -131,14 +131,17 @@ class DiffusionModel(BaseModel, DiffusionRLMixin):
     def forward(self, x):
         if self.model_type == "smdm":
             # TransEncoder expects (batch_size, seq_len) and returns (batch_size, seq_len, vocab_size)
-            return self.model(x)
+            logits = self.model(x).logits
         elif self.model_type == "litgpt":
             # GPT expects (batch_size, seq_len) and returns (batch_size, seq_len, vocab_size)
             # For diffusion models, we don't need KV cache (input_pos=None)
             # This makes it behave like TransEncoder - process full sequence at once
-            return self.model(x, input_pos=None)
+            logits = self.model(x, input_pos=None)
+        elif self.model_type == "huggingface":
+             logits = self.model(x)
         else:
             raise ValueError(f"Unknown model_type: {self.model_type}")
+        return logits
 
     def forward_process(self, batch, eps=1e-3, loss_mask=None):
         """

@@ -55,12 +55,30 @@ class RLModule(L.LightningModule):
             self.model.model = torch.compile(self.model.model)
         
         # Reference model for KL penalty (Critical for stability)
+        # Shared Reference Model Optimization (for PEFT/LoRA)
+        self.shared_ref_model = False
         self.ref_model = None
+
+        # Check for PEFT/LoRA to enable Shared Reference Model (Memory Optimization)
+        try:
+            from peft import PeftModel
+            # Check if likely using HFModelAdapter and if it holds a PeftModel
+            # DiffusionModel -> model (Adapter) -> hf_model (PeftModel)
+            if hasattr(model, "model") and hasattr(model.model, "hf_model") and isinstance(model.model.hf_model, PeftModel):
+                 print("✓ Detected PEFT/LoRA model. Using Shared Reference Model strategy (No copy).")
+                 self.shared_ref_model = True
+        except ImportError:
+            pass
+
         if use_ref_model:
-            print("Initializing Reference Model...")
-            self.ref_model = copy.deepcopy(model)
-            self.ref_model.eval()
-            self.ref_model.requires_grad_(False)
+            if self.shared_ref_model:
+                print("Reference Model: Using Shared Base Model (PEFT disable_adapter)")
+                self.ref_model = None # Not needed as object
+            else:
+                print("Initializing Reference Model (DeepCopy)...")
+                self.ref_model = copy.deepcopy(model)
+                self.ref_model.eval()
+                self.ref_model.requires_grad_(False)
         else:
             print("WARNING: No reference model used. Training may be unstable!")
 
@@ -213,28 +231,64 @@ class RLModule(L.LightningModule):
         
         # 6. KL Penalty
         kl_loss = torch.tensor(0.0, device=self.device)
-        if self.ref_model is not None and self.beta > 0:
+        
+        # Check if we have a valid reference mechanism (explicit object or shared)
+        has_ref = (self.ref_model is not None) or (self.shared_ref_model)
+        
+        if has_ref and self.beta > 0:
             with torch.no_grad():
-                if self.rl_method == "grpo":
-                    ref_log_probs = self.ref_model.compute_elbo(
-                        samples, 
-                        prompt_len=prompt_len,
-                        return_per_token=True
-                    )
-                else:
-                    # Use same estimator for ref model
-                    if hasattr(self.ref_model, "compute_elbo_blockwise"):
-                        ref_log_probs = self.ref_model.compute_elbo_blockwise(
-                            samples,
-                            num_samples=self.elbo_samples,
-                            prompt_len=prompt_len
+                
+                # Helper to compute ref log probs
+                def compute_ref_metrics():
+                    if self.rl_method == "grpo":
+                        return self.model.compute_elbo(
+                            samples, 
+                            prompt_len=prompt_len,
+                            return_per_token=True
                         )
                     else:
+                         # SPG / Blockwise
+                        if hasattr(self.model, "compute_elbo_blockwise"):
+                            return self.model.compute_elbo_blockwise(
+                                samples,
+                                num_samples=self.elbo_samples,
+                                prompt_len=prompt_len
+                            )
+                        else:
+                            return self.model.compute_elbo(
+                                samples,
+                                num_samples=self.elbo_samples,
+                                prompt_len=prompt_len
+                            )
+                
+                if self.shared_ref_model:
+                    # Context manager to disable adapters on the main model
+                    # Access the underlying PeftModel: DiffusionModel -> HFModelAdapter -> PeftModel
+                    peft_model = self.model.model.hf_model
+                    with peft_model.disable_adapter():
+                        ref_log_probs = compute_ref_metrics()
+                else: 
+                     # Standard separate ref_model
+                    if self.rl_method == "grpo":
                         ref_log_probs = self.ref_model.compute_elbo(
-                            samples,
-                            num_samples=self.elbo_samples,
-                            prompt_len=prompt_len
+                            samples, 
+                            prompt_len=prompt_len,
+                            return_per_token=True
                         )
+                    else:
+                        # Use same estimator for ref model
+                        if hasattr(self.ref_model, "compute_elbo_blockwise"):
+                            ref_log_probs = self.ref_model.compute_elbo_blockwise(
+                                samples,
+                                num_samples=self.elbo_samples,
+                                prompt_len=prompt_len
+                            )
+                        else:
+                            ref_log_probs = self.ref_model.compute_elbo(
+                                samples,
+                                num_samples=self.elbo_samples,
+                                prompt_len=prompt_len
+                            )
             
             # PPO KL: Per-token difference
             kld = new_log_probs - ref_log_probs # Shape: [B, Seq]
