@@ -9,6 +9,9 @@ defaults:
 
 seed: 42
 
+# Experiment name for WandB
+experiment_suffix: qwen2.5-0.5b
+
 # Override Hydra output directory
 hydra:
   run:

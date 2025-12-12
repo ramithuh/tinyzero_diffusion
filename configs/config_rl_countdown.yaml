@@ -1,0 +1,85 @@
+# @package _global_
+
+defaults:
+  - tokenizer: qwen2.5
+  - training: default
+  - data: countdown
+  - _self_
+
+# Override defaults here
+experiment_suffix: qwen2.5-0.5b-instruct-rl-grpo
+
+seed: 42
+
+tokenizer:
+  pretrained_model_name_or_path: "Qwen/Qwen2.5-0.5B-Instruct"
+
+data:
+  batch_size: 1  # Reduced to 1 to avoid memory spike
+  train_file: "countdown_hf_train.jsonl" # Full HF dataset (327k)
+  val_file: "countdown_hf_val.jsonl"     # TinyZero's test split (1k)
+  test_file: "countdown_cd3_test.jsonl"  # SPG's test set (256) - Keep for benchmarking
+  num_workers: 0 # Set to 0 to avoid pickling model to workers (CPU OOM fix)
+  max_val_samples: 3 # Reduced to 3 for faster feedback loop (was 100)
+  max_test_samples: 100
+
+training:
+  save_dir: ${hydra:runtime.output_dir}/checkpoints
+  epochs: 10
+  gradient_accumulation_steps: 1 # Set to 1 because batch_size is small
+  val_check_interval: 10 # Run validation every 10 steps (approx 40 mins) to match TinyZero
+  precision: "bf16-mixed" # Use BF16 mixed precision to save memory
+  log_every_n_steps: 1 # Log every step since epochs are slow
+  # val_generation_freq removed - only used by base DiffusionModel, not RLDiffusionModule
+
+# Override model target to be the RL module
+# The RL module takes the base model as an argument
+model:
+  _target_: tzd.rl.module.RLModule
+  model:
+    _target_: tzd.models.diffusion_pretrained.from_pretrained
+    pretrained_model_name: "Qwen/Qwen2.5-0.5B-Instruct"
+    checkpoint_dir: "${hydra:runtime.cwd}/checkpoints/Qwen/Qwen2.5-0.5B-Instruct" # Load pretrained weights!
+    tokenizer: ${tokenizer}
+    model_alias: "qwen-0.5b-diffusion"
+    lr: 3e-6 # Base model LR (can be same as RL module LR)
+    block_size: 512
+    generation_block_size: 512
+
+    
+    # Quantization & LoRA (Optional)
+    quantize: "bnb.nf4" # or null
+    # lora_r: 128
+    # lora_alpha: 64
+    # lora_dropout: 0.05
+    # lora_query: true
+    # lora_key: true
+    # lora_value: true
+    # lora_projection: true
+    # lora_mlp: true
+    # lora_head: false
+  
+  lr: 3e-6
+  num_generations: 4 # Fixed: Reduced from 8 to 4 to match AR and fix OOM
+  beta: 0.001
+  use_ref_model: true
+  rl_method: spg # Default to SPG (Sandwich) for diffusion
+  generation_kwargs:
+    num_steps: 32
+    temperature: 1.0
+  elbo_samples: 1
+
+logger:
+  _target_: lightning.pytorch.loggers.WandbLogger
+  project: diffusion_countdown
+  name: rl_grpo_baseline
+
+callbacks:
+  model_checkpoint:
+    _target_: lightning.pytorch.callbacks.ModelCheckpoint
+    monitor: "val/reward_mean"
+    mode: "max"
+    save_top_k: 3
+    save_last: true
+    filename: "epoch={epoch}-step={step}-reward={val/reward_mean:.2f}"
+    auto_insert_metric_name: false

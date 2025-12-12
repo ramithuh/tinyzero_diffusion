@@ -1,5 +1,5 @@
 import pytest
-from tzd.models import LitModel
+from tzd.models.lit_model import LitModel
 
 def test_lit_model_creation():
     """

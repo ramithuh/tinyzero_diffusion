@@ -12,7 +12,11 @@ To control training configs, look at the following directories:
 Finally, configs/config.yaml combines above components (model, data, training, logger)
 """
 import os
+import torch
 import hydra
+
+# Enable TF32 for faster training on Ampere+ GPUs
+torch.set_float32_matmul_precision('medium')
 import wandb
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -51,14 +55,24 @@ def main(cfg: DictConfig) -> None:
     # Log model information
     print(f"Model: {model.model_alias}, Parameters: {model.get_num_params():,}")
 
-    # Initialize trainer
-    checkpoint_callback = ModelCheckpoint(
-        monitor='val_loss',
-        dirpath=cfg.training.save_dir,
-        save_top_k=3,
-        filename=f'{model.model_alias}-{{epoch:02d}}-{{val_loss:.2f}}',
-        save_last=True,
-    )
+    # Initialize callbacks from config or use defaults
+    callbacks = []
+    if cfg.get("callbacks"):
+        for cb_name, cb_cfg in cfg.callbacks.items():
+            if cb_cfg is not None:
+                cb = hydra.utils.instantiate(cb_cfg, dirpath=cfg.training.save_dir)
+                callbacks.append(cb)
+    else:
+        # Default checkpoint callback for backward compatibility
+        checkpoint_callback = ModelCheckpoint(
+            monitor='val/reward_mean',
+            mode='max',
+            dirpath=cfg.training.save_dir,
+            save_top_k=3,
+            filename=f'{model.model_alias}-{{epoch:02d}}-{{val/reward_mean:.2f}}',
+            save_last=True,
+        )
+        callbacks.append(checkpoint_callback)
 
     trainer = L.Trainer(
         max_epochs=cfg.training.epochs,
@@ -71,7 +85,7 @@ def main(cfg: DictConfig) -> None:
         accumulate_grad_batches=cfg.training.get("gradient_accumulation_steps", 1),
         enable_progress_bar=True,
         logger=hydra.utils.instantiate(cfg.logger) if cfg.logger else None,
-        callbacks=[checkpoint_callback]
+        callbacks=callbacks
     )
 
     # Log complete Hydra configuration to wandb

@@ -1,0 +1,11 @@
+# @package _global_
+
+data:
+  _target_: tzd.data.CountdownDataModule
+  data_dir: ${hydra:runtime.cwd}/data/countdown
+  batch_size: 4
+  num_workers: 0
+  tokenizer: ${tokenizer}
+  train_file: countdown_sft_1k_train.jsonl
+  val_file: countdown_sft_1k_val.jsonl
+  test_file: countdown_cd3_test.jsonl

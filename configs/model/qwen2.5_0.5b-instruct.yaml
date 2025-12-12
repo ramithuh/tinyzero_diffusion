@@ -1,0 +1,20 @@
+# @package _global_
+
+model:
+  _target_: tzd.models.diffusion_pretrained.from_pretrained
+  pretrained_model_name: "Qwen/Qwen2.5-0.5B-Instruct"
+  tokenizer: ${tokenizer}
+  model_alias: "qwen-0.5b-diffusion"
+  lr: 1e-4
+
+  block_size: 1024
+
+  # Download with: litgpt download Qwen/Qwen2.5-0.5B
+  # checkpoint_dir: /home/ruh/ramith/academics/10703/tinyzero_diffusion/checkpoints/Qwen/Qwen2.5-0.5B-Instruct
+
+  # Generation parameters
+  val_generation_freq: ${training.val_generation_freq}
+  val_temperatures: [0.1, 1.0]
+  generation_block_size: ${model.block_size}
+  generation_num_steps: 128
+  sampling_repo: LLaDA

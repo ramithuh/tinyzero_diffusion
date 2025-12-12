@@ -13,7 +13,7 @@ seed: 42
 data:
   block_size: ${model.block_size}
   batch_size: 64
-  num_workers: 4
+  num_workers: 1
   tokenizer: ${tokenizer}
 
 model:
